@@ -16,12 +16,14 @@
 #include "Conversion.h"
 #include "MathUtils.h"
 
-#include "metaphysicl/numberarray.h"
-#include "metaphysicl/dualnumber.h"
+#include "DualRealOps.h"
+
+#include "libmesh/auto_ptr.h" // libmesh_make_unique
 
 #include <limits>
 #include <string>
 #include <cmath>
+#include <memory>
 
 defineADValidParamsFromEmpty(
     ADSingleVariableReturnMappingSolution,
@@ -95,14 +97,17 @@ ADSingleVariableReturnMappingSolution<compute_stage>::returnMappingSolve(
     const ADReal & effective_trial_stress, ADReal & scalar, const ConsoleStream & console)
 {
   // construct the stringstream here only if the debug level is set to ALL
-  std::stringstream * iter_output =
-      (_internal_solve_output_on == InternalSolveOutput::ALWAYS) ? new std::stringstream : nullptr;
+  std::unique_ptr<std::stringstream> iter_output =
+      (_internal_solve_output_on == InternalSolveOutput::ALWAYS)
+          ? libmesh_make_unique<std::stringstream>()
+          : nullptr;
 
   // do the internal solve and capture iteration info during the first round
   // iff full history output is requested regardless of whether the solve failed or succeeded
-  auto solve_state = internalSolve(effective_trial_stress,
-                                   scalar,
-                                   _internal_solve_full_iteration_history ? iter_output : nullptr);
+  auto solve_state =
+      internalSolve(effective_trial_stress,
+                    scalar,
+                    _internal_solve_full_iteration_history ? iter_output.get() : nullptr);
   if (solve_state != SolveState::SUCCESS &&
       _internal_solve_output_on != InternalSolveOutput::ALWAYS)
   {
@@ -112,7 +117,7 @@ ADSingleVariableReturnMappingSolution<compute_stage>::returnMappingSolve(
 
     // user expects some kind of output, if necessary setup output stream now
     if (!iter_output)
-      iter_output = new std::stringstream;
+      iter_output = libmesh_make_unique<std::stringstream>();
 
     // add the appropriate error message to the output
     switch (solve_state)
@@ -132,17 +137,17 @@ ADSingleVariableReturnMappingSolution<compute_stage>::returnMappingSolve(
     // if full history output is only requested for failed solves we have to repeat
     // the solve a second time
     if (_internal_solve_full_iteration_history)
-      internalSolve(effective_trial_stress, scalar, iter_output);
+      internalSolve(effective_trial_stress, scalar, iter_output.get());
 
     // Append summary and throw exception
-    outputIterationSummary(iter_output, _iteration);
+    outputIterationSummary(iter_output.get(), _iteration);
     throw MooseException(iter_output->str());
   }
 
   if (_internal_solve_output_on == InternalSolveOutput::ALWAYS)
   {
     // the solve did not fail but the user requested debug output anyways
-    outputIterationSummary(iter_output, _iteration);
+    outputIterationSummary(iter_output.get(), _iteration);
     console << iter_output->str();
   }
 }
@@ -221,8 +226,9 @@ ADSingleVariableReturnMappingSolution<compute_stage>::internalSolve(
             modified_increment = true;
             scalar_increment *= alpha;
             if (iter_output)
-              *iter_output << "  Line search alpha = " << alpha
-                           << " increment = " << scalar_increment << std::endl;
+              *iter_output << "  Line search alpha = " << MetaPhysicL::raw_value(alpha)
+                           << " increment = " << MetaPhysicL::raw_value(scalar_increment)
+                           << std::endl;
           }
         }
       }
@@ -333,18 +339,19 @@ ADSingleVariableReturnMappingSolution<compute_stage>::checkPermissibleRange(
     scalar_increment = (max_permissible_scalar - scalar_old) / 2.0;
     scalar = scalar_old + scalar_increment;
     if (iter_output)
-      *iter_output << "Scalar greater than maximum (" << max_permissible_scalar
-                   << ") adjusted scalar=" << scalar << " scalar_increment=" << scalar_increment
-                   << std::endl;
+      *iter_output << "Scalar greater than maximum ("
+                   << MetaPhysicL::raw_value(max_permissible_scalar)
+                   << ") adjusted scalar=" << MetaPhysicL::raw_value(scalar)
+                   << " scalar_increment=" << MetaPhysicL::raw_value(scalar_increment) << std::endl;
   }
   else if (scalar < min_permissible_scalar)
   {
     scalar_increment = (min_permissible_scalar - scalar_old) / 2.0;
     scalar = scalar_old + scalar_increment;
     if (iter_output)
-      *iter_output << "Scalar less than minimum (" << min_permissible_scalar
-                   << ") adjusted scalar=" << scalar << " scalar_increment=" << scalar_increment
-                   << std::endl;
+      *iter_output << "Scalar less than minimum (" << MetaPhysicL::raw_value(min_permissible_scalar)
+                   << ") adjusted scalar=" << MetaPhysicL::raw_value(scalar)
+                   << " scalar_increment=" << MetaPhysicL::raw_value(scalar_increment) << std::endl;
   }
 }
 
@@ -393,7 +400,7 @@ ADSingleVariableReturnMappingSolution<compute_stage>::outputIterationStep(
                  << " trial_stress=" << MetaPhysicL::raw_value(effective_trial_stress)
                  << " scalar=" << MetaPhysicL::raw_value(scalar) << " residual=" << residual
                  << " ref_res=" << reference_residual
-                 << " rel_res=" << std::abs(MetaPhysicL::raw_value(residual)) / reference_residual
+                 << " rel_res=" << std::abs(residual) / reference_residual
                  << " rel_tol=" << _relative_tolerance << " abs_res=" << std::abs(residual)
                  << " abs_tol=" << _absolute_tolerance << '\n';
   }
@@ -405,8 +412,9 @@ ADSingleVariableReturnMappingSolution<compute_stage>::outputIterationSummary(
     std::stringstream * iter_output, const unsigned int total_it)
 {
   if (iter_output)
-    *iter_output << "In " << total_it << " iterations the residual went from " << _initial_residual
-                 << " to " << _residual << " in '" << _svrms_name << "'.\n";
+    *iter_output << "In " << total_it << " iterations the residual went from "
+                 << MetaPhysicL::raw_value(_initial_residual) << " to "
+                 << MetaPhysicL::raw_value(_residual) << " in '" << _svrms_name << "'.\n";
 }
 
 // explicit instantiation is required for AD base classes

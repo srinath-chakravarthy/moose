@@ -254,6 +254,8 @@ validParams<MooseApp>()
   params.addPrivateParam<std::shared_ptr<Parallel::Communicator>>("_comm");
   params.addPrivateParam<unsigned int>("_multiapp_level");
   params.addPrivateParam<unsigned int>("_multiapp_number");
+  params.addPrivateParam<const MooseMesh *>("_master_mesh");
+  params.addPrivateParam<const MooseMesh *>("_master_displaced_mesh");
 
   return params;
 }
@@ -302,6 +304,11 @@ MooseApp::MooseApp(InputParameters parameters)
         isParamValid("_multiapp_level") ? parameters.get<unsigned int>("_multiapp_level") : 0),
     _multiapp_number(
         isParamValid("_multiapp_number") ? parameters.get<unsigned int>("_multiapp_number") : 0),
+    _master_mesh(isParamValid("_master_mesh") ? parameters.get<const MooseMesh *>("_master_mesh")
+                                              : nullptr),
+    _master_displaced_mesh(isParamValid("_master_displaced_mesh")
+                               ? parameters.get<const MooseMesh *>("_master_displaced_mesh")
+                               : nullptr),
     _setup_timer(_perf_graph.registerSection("MooseApp::setup", 2)),
     _setup_options_timer(_perf_graph.registerSection("MooseApp::setupOptions", 5)),
     _run_input_file_timer(_perf_graph.registerSection("MooseApp::runInputFile", 3)),
@@ -406,6 +413,12 @@ MooseApp::MooseApp(InputParameters parameters)
     // Sleep to allow time for the debugger to attach
     std::this_thread::sleep_for(std::chrono::seconds(getParam<unsigned int>("stop_for_debugger")));
   }
+
+  if (_master_mesh && _multiapp_level == 0)
+    mooseError("Mesh can be passed in only for sub-apps");
+
+  if (_master_displaced_mesh && !_master_mesh)
+    mooseError("_master_mesh should have been set when _master_displaced_mesh is set");
 }
 
 void
@@ -1550,6 +1563,23 @@ void
 MooseApp::clearMeshGenerators()
 {
   _mesh_generators.clear();
+}
+
+std::unique_ptr<MeshBase>
+MooseApp::getMeshGeneratorMesh(bool check_unique)
+{
+  if (_final_generated_meshes.empty())
+    mooseError("No generated mesh to retrieve. Your input file should contain either a [Mesh] or "
+               "[MeshGenerators] block.");
+
+  auto mesh_unique_ptr_ptr = _final_generated_meshes.front();
+  _final_generated_meshes.pop_front();
+
+  if (check_unique && !_final_generated_meshes.empty())
+    mooseError("Multiple generated meshes exist while retrieving the final Mesh. This means that "
+               "the selection of the final mesh is non-deterministic.");
+
+  return std::move(*mesh_unique_ptr_ptr);
 }
 
 void

@@ -19,17 +19,35 @@ def check_requirement(filename):
 
     messages = []
     root = hit_load(filename)
-    design = root.children[0].get('design', None)
-    issues = root.children[0].get('issues', None)
+    design = root.children[0].get('design', '')
+    issues = root.children[0].get('issues', '')
+    deprecated = root.children[0].get('deprecated', False)
+
     for child in root.children[0]:
+        if child.get('deprecated', deprecated):
+            continue
+
         if 'requirement' not in child:
-            messages.append("    'requirement' parameter is missing in '{}' block.".format(child.name))
+            messages.append("    'requirement' parameter is missing or empty in '{}' block.".format(child.name))
 
-        if child.get('design', design) is None:
-            messages.append("    'design' parameter is missing in '{}' block.".format(child.name))
+        if not child.get('design', design).strip():
+            messages.append("    'design' parameter is missing or empty in '{}' block.".format(child.name))
 
-        if child.get('issues', issues) is None:
-            messages.append("    'issues' parameter is missing in '{}' block.".format(child.name))
+        if not child.get('issues', issues).strip():
+            messages.append("    'issues' parameter is missing or empty in '{}' block.".format(child.name))
+
+        for grandchild in child.children:
+            if 'detail' not in grandchild:
+                messages.append("    'detail' parameter is missing or empty in '{}' block.".format(grandchild.name))
+
+            if 'requirement' in grandchild:
+                messages.append("    'requirement' parameter in block '{}' must not be used within a group, use 'detail' instead.".format(grandchild.name))
+
+            if 'design' in grandchild:
+                messages.append("    'design' parameter in block '{}' must not be used within a group.".format(grandchild.name))
+
+            if 'issues' in grandchild:
+                messages.append("    'issues' parameter in block '{}' must not be used within a group.".format(grandchild.name))
 
     if messages:
         print 'ERROR in {}'.format(filename)
@@ -53,9 +71,10 @@ def sqa_check(working_dir=os.getcwd(), remote='origin', branch='devel', specs=['
     sha = subprocess.check_output(cmd).strip()
     cmd = ['git', 'diff', sha, '--name-only']
     for filename in subprocess.check_output(cmd).split('\n'):
-        if os.path.isfile(filename) and (os.path.basename(filename) in specs) and \
+        fullname = os.path.join(root, filename)
+        if os.path.isfile(fullname) and (os.path.basename(filename) in specs) and \
            not any(s in filename for s in skip):
-            count += check_requirement(os.path.join(root, filename))
+            count += check_requirement(fullname)
 
     return count
 

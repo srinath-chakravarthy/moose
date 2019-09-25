@@ -141,15 +141,6 @@ public:
   FEProblemBase(const InputParameters & parameters);
   virtual ~FEProblemBase();
 
-  bool automaticScaling() const { return _automatic_scaling; }
-  void automaticScaling(bool automatic_scaling) { _automatic_scaling = automatic_scaling; }
-
-  bool computeScalingOnce() const { return _compute_scaling_once; }
-  void computeScalingOnce(bool compute_scaling_once)
-  {
-    _compute_scaling_once = compute_scaling_once;
-  }
-
   virtual EquationSystems & es() override { return _eq; }
   virtual MooseMesh & mesh() override { return _mesh; }
   virtual const MooseMesh & mesh() const override { return _mesh; }
@@ -443,7 +434,7 @@ public:
    * Note: DO NOT CALL THIS IN A THREADED REGION!  This is meant to be called just after a threaded
    * section.
    */
-  virtual void checkExceptionAndStopSolve();
+  virtual void checkExceptionAndStopSolve(bool print_message = true);
 
   virtual bool converged() override;
   virtual unsigned int nNonlinearIterations() const override;
@@ -468,10 +459,11 @@ public:
   virtual void transient(bool trans) { _transient = trans; }
   virtual bool isTransient() const override { return _transient; }
 
+  virtual void addTimeIntegrator(const std::string & type,
+                                 const std::string & name,
+                                 InputParameters & parameters);
   virtual void
-  addTimeIntegrator(const std::string & type, const std::string & name, InputParameters parameters);
-  virtual void
-  addPredictor(const std::string & type, const std::string & name, InputParameters parameters);
+  addPredictor(const std::string & type, const std::string & name, InputParameters & parameters);
 
   virtual void copySolutionsBackwards();
 
@@ -541,7 +533,8 @@ public:
 #endif // LIBMESH_HAVE_PETSC
 
   // Function /////
-  virtual void addFunction(std::string type, const std::string & name, InputParameters parameters);
+  virtual void
+  addFunction(std::string type, const std::string & name, InputParameters & parameters);
   virtual bool hasFunction(const std::string & name, THREAD_ID tid = 0);
   virtual Function & getFunction(const std::string & name, THREAD_ID tid = 0);
 
@@ -567,13 +560,13 @@ public:
    * The following functions will enable MOOSE to have the capability to import distributions
    */
   virtual void
-  addDistribution(std::string type, const std::string & name, InputParameters parameters);
+  addDistribution(std::string type, const std::string & name, InputParameters & parameters);
   virtual Distribution & getDistribution(const std::string & name);
 
   /**
    * The following functions will enable MOOSE to have the capability to import Samplers
    */
-  virtual void addSampler(std::string type, const std::string & name, InputParameters parameters);
+  virtual void addSampler(std::string type, const std::string & name, InputParameters & parameters);
   virtual Sampler & getSampler(const std::string & name, THREAD_ID tid = 0);
 
   // NL /////
@@ -588,37 +581,47 @@ public:
 
   virtual NonlinearSystem & getNonlinearSystem();
 
+  /**
+   * Canonical method for adding a non-linear variable
+   * @param var_type the type of the variable, e.g. MooseVariableScalar
+   * @param var_name the variable name, e.g. 'u'
+   * @param params the InputParameters from which to construct the variable
+   */
+  virtual void
+  addVariable(const std::string & var_type, const std::string & var_name, InputParameters & params);
+
   virtual void addVariable(const std::string & var_name,
                            const FEType & type,
                            Real scale_factor,
-                           const std::set<SubdomainID> * const active_subdomains = NULL);
+                           const std::set<SubdomainID> * const active_subdomains = nullptr);
   virtual void addArrayVariable(const std::string & var_name,
                                 const FEType & type,
                                 unsigned int components,
                                 const std::vector<Real> & scale_factor,
-                                const std::set<SubdomainID> * const active_subdomains = NULL);
+                                const std::set<SubdomainID> * const active_subdomains = nullptr);
   virtual void addScalarVariable(const std::string & var_name,
                                  Order order,
                                  Real scale_factor = 1.,
-                                 const std::set<SubdomainID> * const active_subdomains = NULL);
+                                 const std::set<SubdomainID> * const active_subdomains = nullptr);
 
   virtual void addADKernel(const std::string & kernel_name,
                            const std::string & name,
-                           InputParameters parameters);
+                           InputParameters & parameters);
 
-  virtual void
-  addKernel(const std::string & kernel_name, const std::string & name, InputParameters parameters);
+  virtual void addKernel(const std::string & kernel_name,
+                         const std::string & name,
+                         InputParameters & parameters);
   virtual void addNodalKernel(const std::string & kernel_name,
                               const std::string & name,
-                              InputParameters parameters);
+                              InputParameters & parameters);
   virtual void addScalarKernel(const std::string & kernel_name,
                                const std::string & name,
-                               InputParameters parameters);
+                               InputParameters & parameters);
   virtual void addBoundaryCondition(const std::string & bc_name,
                                     const std::string & name,
-                                    InputParameters parameters);
+                                    InputParameters & parameters);
   virtual void
-  addConstraint(const std::string & c_name, const std::string & name, InputParameters parameters);
+  addConstraint(const std::string & c_name, const std::string & name, InputParameters & parameters);
 
   virtual void setInputParametersFEProblem(InputParameters & parameters)
   {
@@ -626,6 +629,17 @@ public:
   }
 
   // Aux /////
+
+  /**
+   * Canonical method for adding an auxiliary variable
+   * @param var_type the type of the variable, e.g. MooseVariableScalar
+   * @param var_name the variable name, e.g. 'u'
+   * @param params the InputParameters from which to construct the variable
+   */
+  virtual void addAuxVariable(const std::string & var_type,
+                              const std::string & var_name,
+                              InputParameters & params);
+
   virtual void addAuxVariable(const std::string & var_name,
                               const FEType & type,
                               const std::set<SubdomainID> * const active_subdomains = NULL);
@@ -639,49 +653,49 @@ public:
                                     const std::set<SubdomainID> * const active_subdomains = NULL);
   virtual void addAuxKernel(const std::string & kernel_name,
                             const std::string & name,
-                            InputParameters parameters);
+                            InputParameters & parameters);
   virtual void addAuxScalarKernel(const std::string & kernel_name,
                                   const std::string & name,
-                                  InputParameters parameters);
+                                  InputParameters & parameters);
 
   AuxiliarySystem & getAuxiliarySystem() { return *_aux; }
 
   // Dirac /////
   virtual void addDiracKernel(const std::string & kernel_name,
                               const std::string & name,
-                              InputParameters parameters);
+                              InputParameters & parameters);
 
   // DG /////
   virtual void addDGKernel(const std::string & kernel_name,
                            const std::string & name,
-                           InputParameters parameters);
+                           InputParameters & parameters);
 
   // Interface /////
   virtual void addInterfaceKernel(const std::string & kernel_name,
                                   const std::string & name,
-                                  InputParameters parameters);
+                                  InputParameters & parameters);
 
   // IC /////
   virtual void addInitialCondition(const std::string & ic_name,
                                    const std::string & name,
-                                   InputParameters parameters);
+                                   InputParameters & parameters);
 
   void projectSolution();
 
   // Materials /////
   virtual void addMaterial(const std::string & kernel_name,
                            const std::string & name,
-                           InputParameters parameters);
+                           InputParameters & parameters);
   virtual void addADResidualMaterial(const std::string & kernel_name,
                                      const std::string & name,
-                                     InputParameters parameters);
+                                     InputParameters & parameters);
   virtual void addADJacobianMaterial(const std::string & kernel_name,
                                      const std::string & name,
-                                     InputParameters parameters);
+                                     InputParameters & parameters);
   virtual void addMaterialHelper(std::vector<MaterialWarehouse *> warehouse,
                                  const std::string & kernel_name,
                                  const std::string & name,
-                                 InputParameters parameters);
+                                 InputParameters & parameters);
 
   /**
    * Add the MooseVariables that the current materials depend on to the dependency list.
@@ -705,11 +719,12 @@ public:
 
   // Postprocessors /////
   virtual void
-  addPostprocessor(std::string pp_name, const std::string & name, InputParameters parameters);
+  addPostprocessor(std::string pp_name, const std::string & name, InputParameters & parameters);
 
   // VectorPostprocessors /////
-  virtual void
-  addVectorPostprocessor(std::string pp_name, const std::string & name, InputParameters parameters);
+  virtual void addVectorPostprocessor(std::string pp_name,
+                                      const std::string & name,
+                                      InputParameters & parameters);
 
   /**
    * Initializes the postprocessor data
@@ -721,8 +736,9 @@ public:
   void initVectorPostprocessorData(const std::string & name);
 
   // UserObjects /////
-  virtual void
-  addUserObject(std::string user_object_name, const std::string & name, InputParameters parameters);
+  virtual void addUserObject(std::string user_object_name,
+                             const std::string & name,
+                             InputParameters & parameters);
 
   // TODO: delete this function after apps have been updated to not call it
   const ExecuteMooseObjectWarehouse<UserObject> & getUserObjects() const
@@ -919,7 +935,7 @@ public:
 
   // Dampers /////
   virtual void
-  addDamper(std::string damper_name, const std::string & name, InputParameters parameters);
+  addDamper(std::string damper_name, const std::string & name, InputParameters & parameters);
   void setupDampers();
 
   /**
@@ -929,18 +945,18 @@ public:
 
   // Indicators /////
   void
-  addIndicator(std::string indicator_name, const std::string & name, InputParameters parameters);
+  addIndicator(std::string indicator_name, const std::string & name, InputParameters & parameters);
 
   // Markers //////
   virtual void
-  addMarker(std::string marker_name, const std::string & name, InputParameters parameters);
+  addMarker(std::string marker_name, const std::string & name, InputParameters & parameters);
 
   /**
    * Add a MultiApp to the problem.
    */
   virtual void addMultiApp(const std::string & multi_app_name,
                            const std::string & name,
-                           InputParameters parameters);
+                           InputParameters & parameters);
 
   /**
    * Get a MultiApp object by name.
@@ -1015,7 +1031,7 @@ public:
    */
   virtual void addTransfer(const std::string & transfer_name,
                            const std::string & name,
-                           InputParameters parameters);
+                           InputParameters & parameters);
 
   /**
    * Execute the Transfers associated with the ExecFlagType
@@ -1593,7 +1609,7 @@ public:
   /**
    * Adds an Output object.
    */
-  void addOutput(const std::string &, const std::string &, InputParameters);
+  void addOutput(const std::string &, const std::string &, InputParameters &);
 
   inline TheWarehouse & theWarehouse() const { return _app.theWarehouse(); }
 
@@ -1609,6 +1625,14 @@ public:
    * Return a flag that indicates if we are reusing the vector base
    */
   bool useSNESMFReuseBase() { return _snesmf_reuse_base; }
+
+  /**
+   * Set a flag that indicates if we want to skip exception and stop solve
+   */
+  void skipExceptionCheck(bool skip_exception_check)
+  {
+    _skip_exception_check = skip_exception_check;
+  }
 
   /**
    * Return a flag to indicate if _snesmf_reuse_base is set by users
@@ -1684,6 +1708,16 @@ public:
    * Returns the mortar data object
    */
   const MortarData & mortarData() const { return _mortar_data; }
+
+  /**
+   * Whether the simulation has neighbor coupling
+   */
+  virtual bool hasNeighborCoupling() const { return _has_internal_edge_residual_objects; }
+
+  /**
+   * Whether the simulation has mortar coupling
+   */
+  virtual bool hasMortarCoupling() const { return _has_mortar; }
 
 protected:
   /// Create extra tagged vectors and matrices
@@ -1869,6 +1903,9 @@ protected:
   /// If or not to resuse the base vector for matrix-free calculation
   bool _snesmf_reuse_base;
 
+  /// If or not skip 'exception and stop solve'
+  bool _skip_exception_check;
+
   /// If or not _snesmf_reuse_base is set by user
   bool _snesmf_reuse_base_set_by_user;
 
@@ -2016,14 +2053,6 @@ private:
   /// Whether old solution second time derivative needs to be stored
   bool _u_dotdot_old_requested;
 
-  /// Whether to automatically scale the variables
-  bool _automatic_scaling;
-
-  /// Whether the scaling factors should only be computed once at the beginning of the simulation
-  /// through an extra Jacobian evaluation. If this is set to false, then the scaling factors will
-  /// be computed during an extra Jacobian evaluation at the beginning of every time step.
-  bool _compute_scaling_once;
-
   friend class AuxiliarySystem;
   friend class NonlinearSystemBase;
   friend class MooseEigenSystem;
@@ -2031,6 +2060,9 @@ private:
   friend class RestartableDataIO;
   friend class Restartable;
   friend class DisplacedProblem;
+
+  /// Whether the simulation requires mortar coupling
+  bool _has_mortar;
 };
 
 template <typename T>

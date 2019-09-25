@@ -62,12 +62,15 @@ class SQAExtension(command.CommandExtension):
     @staticmethod
     def defaultConfig():
         config = command.CommandExtension.defaultConfig()
-        config['url'] = (u"https://github.com",
-                         "Repository for linking issues and commits.")
-        config['repo'] = (u"idaholab/moose",
-                          "The default repository location to append to the given url.")
+        config['url'] = (u'https://github.com', "Deprecated, see 'repos'.")
+        config['repo'] = (None, "Deprecated, see 'repos'.")
+
+        config['repos'] = (dict(default=u"https://github.com/idaholab/moose"),
+                           "The repository locations for linking issues, set 'default' to allow " \
+                           "'#1234' or add additional keys to allow for foo#1234.")
         config['categories'] = (dict(), "A dictionary of category names that includes a " \
-                                        "dictionary with 'directories' and optionally 'specs'.")
+                                        "dictionary with 'directories' and optionally 'specs' " \
+                                        "and 'dependencies'.")
         config['requirement-groups'] = (dict(), "Allows requirement group names to be changed.")
 
         # Disable by default to allow for updates to applications
@@ -79,6 +82,7 @@ class SQAExtension(command.CommandExtension):
 
         # Build requirements sets
         self.__requirements = dict()
+        self.__dependencies = dict()
         for index, (category, info) in enumerate(self.get('categories').iteritems(), 1): #pylint: disable=no-member
             specs = info.get('specs', ['tests'])
             directories = []
@@ -95,8 +99,24 @@ class SQAExtension(command.CommandExtension):
             # Create requirement database
             self.__requirements[category] = common.get_requirements(directories, specs, 'F', index)
 
+            # Create dependency database
+            self.__dependencies[category] = info.get('dependencies', [])
+
         # Storage for requirement matrix counting (see SQARequirementMatricCommand)
         self.__counts = collections.defaultdict(int)
+
+        # Deprecate 'url' and 'repo' config options
+        url = self.get('url')
+        repo = self.get('repo')
+        if repo is not None:
+            msg = "The 'url' and 'repo' config options for MooseDocs.extensions.sqa are deprecated,"\
+                 " add the 'repos' option with a 'default' entry instead."
+            LOG.warning(msg)
+            self['repos'].update(dict(default="{}/{}".format(url, repo)))
+
+        # Always include MOOSE and libMesh
+        self['repos'].update(dict(moose=u"https://github.com/idaholab/moose",
+                                  libmesh=u"https://github.com/libMesh/libmesh"))
 
     def requirements(self, category):
         """Return the requirements dictionaries."""
@@ -104,6 +124,13 @@ class SQAExtension(command.CommandExtension):
         if req is None:
             raise exceptions.MooseDocsException("Unknown or missing 'category': {}", category)
         return req
+
+    def dependencies(self, category):
+        """Return the dependency list for given category."""
+        dep = self.__dependencies.get(category, None)
+        if dep is None:
+            raise exceptions.MooseDocsException("Unknown or missing 'category': {}", category)
+        return dep
 
     def preExecute(self, root):
         """Reset counts."""
@@ -327,7 +354,6 @@ class SQARequirementsMatrixCommand(command.CommandComponent):
 
         return parent
 
-
 class SQAVerificationCommand(command.CommandComponent):
     COMMAND = 'sqa'
     SUBCOMMAND = ('verification', 'validation')
@@ -388,14 +414,22 @@ class SQADependenciesCommand(command.CommandComponent):
     def defaultSettings():
         config = command.CommandComponent.defaultSettings()
         config['suffix'] = (None, "Provide the filename suffix to include.")
+        config['category'] = (None, "Provide the category.")
         return config
 
     def createToken(self, parent, info, page):
         suffix = self.settings['suffix']
+        category = self.settings['category']
+        if category == '_empty_':
+            depends = self.extension.get('categories').keys()
+        else:
+            depends = self.extension.dependencies(category) or \
+                self.extension.get('categories').keys()
+
         ul = core.UnorderedList(parent)
-        for category in self.extension.get('categories'):
-            fname = '{}_{}.md'.format(category, suffix)
-            if not page.local.endswith(fname):
+        for dep in depends:
+            if dep != category:
+                fname = '{}_{}.md'.format(dep, suffix)
                 autolink.AutoLink(core.ListItem(ul), page=u'sqa/{}'.format(fname),
                                   optional=True, warning=True, class_='moose-sqa-dependency')
         return parent
@@ -553,18 +587,29 @@ class RenderSQARequirementDesign(autolink.RenderLinkBase):
 
 class RenderSQARequirementIssues(components.RenderComponent):
 
+    ISSUE_RE = re.compile(r"(?P<key>\w+)?#(?P<issues>[0-9]+)")
+    COMMIT_RE = re.compile(r"(?:(?P<key>\w+):)?(?P<commit>[0-9a-f]{10,40})")
+
+    def __urlHelper(self, regex, name, issue, token):
+        """Function for creating issue/commit links."""
+        repos = self.extension['repos']
+        default = repos.get('default', None)
+        match = regex.search(issue)
+        if match:
+            key = match.group('key')
+            repo = repos.get(key, None)
+            if (key is not None) and (repo is None):
+                msg = "Unknown key '{}' for MooseDocs.extensions.sqa 'repos' config.\n    {}:{}"
+                raise exceptions.MooseDocsException(msg, key, token['filename'], token['line'])
+            repo = repo or default
+            url = u"{}/{}/{}".format(repo, name, match.group(name))
+            return url
+
     def getURL(self, issue, token):
         url = None
-        base = self.extension['url'].rstrip('/')
-        repo = self.extension['repo'].strip('/')
-
-        match = re.search(r"(?P<repo>\w+/\w+)#(?P<issue>[0-9]+)", issue)
-        if match:
-            url = u"{}/{}/issues/{}".format(base, match.group('repo'), match.group('issue'))
-        elif issue.startswith('#'):
-            url = u"{}/{}/issues/{}".format(base, repo, issue[1:])
-        elif re.search(r'\A[0-9a-f]{10,40}\Z', issue):
-            url = u"{}/{}/commit/{}".format(base, repo, issue[1:])
+        url = self.__urlHelper(self.ISSUE_RE, 'issues', issue, token)
+        if url is None:
+            url = self.__urlHelper(self.COMMIT_RE, 'commit', issue, token)
 
         if (url is None) and (issue != u''):
             msg = "Unknown issue number or commit (commit SHA-1 must be at least 10 digits): "\

@@ -872,7 +872,7 @@ void
 Water97FluidProperties::vaporTemperature(Real pressure, Real & Tsat, Real & dTsat_dp) const
 {
   FPDualReal p = pressure;
-  p.derivatives()[0] = 1.0;
+  Moose::derivInsert(p.derivatives(), 0, 1.0);
 
   const FPDualReal T = vaporTemperature_ad(p);
 
@@ -1686,9 +1686,9 @@ Water97FluidProperties::T_from_p_h(
     Real pressure, Real enthalpy, Real & temperature, Real & dT_dp, Real & dT_dh) const
 {
   FPDualReal p = pressure;
-  p.derivatives()[0] = 1.0;
+  Moose::derivInsert(p.derivatives(), 0, 1.0);
   FPDualReal h = enthalpy;
-  h.derivatives()[1] = 1.0;
+  Moose::derivInsert(h.derivatives(), 1, 1.0);
 
   const FPDualReal T = T_from_p_h_ad(p, h);
 
@@ -1929,4 +1929,19 @@ Water97FluidProperties::henryConstant(Real temperature,
   // Henry's constant and its derivative wrt temperature
   Kh = p * std::exp(lnkh);
   dKh_dT = (p * dlnkh_dT + dp_dT) * std::exp(lnkh);
+}
+
+DualReal
+Water97FluidProperties::henryConstant(const DualReal & temperature,
+                                      const std::vector<Real> & coeffs) const
+{
+  const Real T = temperature.value();
+  Real Kh_real = 0.0;
+  Real dKh_dT_real = 0.0;
+  henryConstant(T, coeffs, Kh_real, dKh_dT_real);
+
+  DualReal Kh = Kh_real;
+  Kh.derivatives() = temperature.derivatives() * dKh_dT_real;
+
+  return Kh;
 }

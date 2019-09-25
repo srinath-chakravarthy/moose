@@ -115,8 +115,6 @@ protected:
   MaterialProperty<std::vector<std::vector<RealGradient>>> * _grad_mass_frac_qp;
   /// Derivative of the mass fraction matrix with respect to the Porous Flow variables
   MaterialProperty<std::vector<std::vector<std::vector<Real>>>> & _dmass_frac_dvar;
-  /// Old value of saturation
-  const MaterialProperty<std::vector<Real>> & _saturation_old;
 
   /// Fluid density of each phase
   MaterialProperty<std::vector<Real>> & _fluid_density;
@@ -139,5 +137,12 @@ protected:
   std::vector<FluidStateProperties> _fsp;
   /// Capillary pressure UserObject
   const PorousFlowCapillaryPressure & _pc;
+  /// Index of derivative wrt pressure
+  const unsigned int _pidx;
+  /// Index of derivative wrt temperature
+  const unsigned int _Tidx;
+  /// Index of derivative wrt total mass fraction Z
+  const unsigned int _Zidx;
+  /// Index of derivative wrt salt mass fraction X
+  const unsigned int _Xidx;
 };
-

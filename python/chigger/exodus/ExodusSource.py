@@ -89,7 +89,7 @@ class ExodusSource(base.ChiggerSource):
 
     def getVTKSource(self):
         """
-        Returns the vtkExtractBlock object used for pulling subdomsin/sideset/nodeset data from the
+        Returns the vtkExtractBlock object used for pulling subdomain/sideset/nodeset data from the
         reader. (override)
 
         Returns:
@@ -351,3 +351,19 @@ class ExodusSource(base.ChiggerSource):
             rng = list(self.__getRange())
 
         self.getVTKMapper().SetScalarRange(rng)
+
+        # Handle Elemental variables that are not everywhere on the domain
+        varname = self.__current_variable.name
+        block = self.getOption('block')
+        if (self.__current_variable.object_type == ExodusReader.ELEMENTAL) and (block is not None):
+            for i in range(self.__vtkextractblock.GetOutput().GetNumberOfBlocks()):
+                if not hasattr(self.__vtkextractblock.GetOutput().GetBlock(i), 'GetNumberOfBlocks'):
+                    continue
+                for j in range(self.__vtkextractblock.GetOutput().GetBlock(i).GetNumberOfBlocks()):
+                    blk = self.__vtkextractblock.GetOutput().GetBlock(i).GetBlock(j)
+                    if not blk.GetCellData().HasArray(varname):
+                        data = vtk.vtkDoubleArray()
+                        data.SetName(varname)
+                        data.SetNumberOfTuples(blk.GetCellData().GetArray(0).GetNumberOfTuples())
+                        data.FillComponent(0, vtk.vtkMath.Nan())
+                        blk.GetCellData().AddArray(data)

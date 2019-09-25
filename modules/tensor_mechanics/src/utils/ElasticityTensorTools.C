@@ -114,16 +114,6 @@ momentJacobianWC(const RankFourTensor & r4t, unsigned int i, unsigned int k, Rea
   return test * phi * sum;
 }
 
-//template <class T>
-//auto
-//getIsotropicBulkModulus(const T & elasticity_tensor) -> decltype(elasticity_tensor(0, 1, 0, 1))
-//{
-//
-//
-//}
-
-//Real
-//getIsotropicBulkModulus(const RankFourTensor & elasticity_tensor)
 //{
 //  const Real shear_modulus = getIsotropicShearModulus(elasticity_tensor);
 //  // dilatational modulus is defined as lambda plus two mu
@@ -132,24 +122,4 @@ momentJacobianWC(const RankFourTensor & r4t, unsigned int i, unsigned int k, Rea
 //  const Real bulk_modulus = lambda + 2.0 * shear_modulus / 3.0;
 //  return bulk_modulus;
 //}
-
-Real
-getIsotropicYoungsModulus(const RankFourTensor & elasticity_tensor)
-{
-  const Real shear_modulus = getIsotropicShearModulus(elasticity_tensor);
-  // dilatational modulus is defined as lambda plus two mu
-  const Real dilatational_modulus = elasticity_tensor(0, 0, 0, 0);
-  const Real lambda = dilatational_modulus - 2.0 * shear_modulus;
-  const Real youngs_modulus =
-      shear_modulus * (3.0 * lambda + 2.0 * shear_modulus) / (lambda + shear_modulus);
-  return youngs_modulus;
-}
-
-Real
-getIsotropicPoissonsRatio(const RankFourTensor & elasticity_tensor)
-{
-  const Real poissons_ratio = elasticity_tensor(1, 1, 0, 0) /
-                              (elasticity_tensor(1, 1, 1, 1) + elasticity_tensor(1, 1, 0, 0));
-  return poissons_ratio;
-}
 }

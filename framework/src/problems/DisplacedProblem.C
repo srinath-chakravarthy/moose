@@ -45,21 +45,18 @@ DisplacedProblem::DisplacedProblem(const InputParameters & parameters)
     _displacements(getParam<std::vector<std::string>>("displacements")),
     _displaced_nl(*this,
                   _mproblem.getNonlinearSystemBase(),
-                  _mproblem.getNonlinearSystemBase().name() + "_displaced",
+                  _mproblem.getNonlinearSystemBase().name(),
                   Moose::VAR_NONLINEAR),
     _displaced_aux(*this,
                    _mproblem.getAuxiliarySystem(),
-                   _mproblem.getAuxiliarySystem().name() + "_displaced",
+                   _mproblem.getAuxiliarySystem().name(),
                    Moose::VAR_AUXILIARY),
-    _geometric_search_data(_mproblem, _mesh),
+    _geometric_search_data(*this, _mesh),
     _eq_init_timer(registerTimedSection("eq::init", 2)),
     _update_mesh_timer(registerTimedSection("updateMesh", 3)),
     _sync_solutions_timer(registerTimedSection("syncSolutions", 5)),
     _update_geometric_search_timer(registerTimedSection("updateGeometricSearch", 3))
 {
-  // Possibly turn off default ghosting in libMesh
-  _eq.enable_default_ghosting(_default_ghosting);
-
   // TODO: Move newAssemblyArray further up to SubProblem so that we can use it here
   unsigned int n_threads = libMesh::n_threads();
 
@@ -68,6 +65,9 @@ DisplacedProblem::DisplacedProblem(const InputParameters & parameters)
     _assembly.emplace_back(libmesh_make_unique<Assembly>(_displaced_nl, i));
 
   _displaced_nl.addTimeIntegrator(_mproblem.getNonlinearSystemBase().getSharedTimeIntegrator());
+
+  if (!_default_ghosting)
+    _mesh.getMesh().remove_ghosting_functor(_mesh.getMesh().default_ghosting());
 }
 
 bool
@@ -203,8 +203,23 @@ DisplacedProblem::updateMesh()
 
   Threads::parallel_reduce(node_range, udmt);
 
-  // Update the geometric searches that depend on the displaced mesh
-  _geometric_search_data.update();
+  // Update the geometric searches that depend on the displaced mesh. This call can end up running
+  // NearestNodeThread::operator() which has a throw inside of it. We need to catch it and make sure
+  // it's propagated to all processes before updating the point locator because the latter requires
+  // communication
+  try
+  {
+    _geometric_search_data.update();
+  }
+  catch (MooseException & e)
+  {
+    _mproblem.setException(e.what());
+  }
+
+  // The below call will throw an exception on all processes if any of our processes had an
+  // exception above. This exception will be caught higher up the call stack and the error message
+  // will be printed there
+  _mproblem.checkExceptionAndStopSolve(/*print_message=*/false);
 
   // Since the Mesh changed, update the PointLocator object used by DiracKernels.
   _dirac_kernel_info.updatePointLocator(_mesh);
@@ -232,8 +247,23 @@ DisplacedProblem::updateMesh(const NumericVector<Number> & soln,
 
   Threads::parallel_reduce(node_range, udmt);
 
-  // Update the geometric searches that depend on the displaced mesh
-  _geometric_search_data.update();
+  // Update the geometric searches that depend on the displaced mesh. This call can end up running
+  // NearestNodeThread::operator() which has a throw inside of it. We need to catch it and make sure
+  // it's propagated to all processes before updating the point locator because the latter requires
+  // communication
+  try
+  {
+    _geometric_search_data.update();
+  }
+  catch (MooseException & e)
+  {
+    _mproblem.setException(e.what());
+  }
+
+  // The below call will throw an exception on all processes if any of our processes had an
+  // exception above. This exception will be caught higher up the call stack and the error message
+  // will be printed there
+  _mproblem.checkExceptionAndStopSolve(/*print_message=*/false);
 
   // Since the Mesh changed, update the PointLocator object used by DiracKernels.
   _dirac_kernel_info.updatePointLocator(_mesh);
@@ -397,58 +427,19 @@ DisplacedProblem::getSystem(const std::string & var_name)
 }
 
 void
-DisplacedProblem::addVariable(const std::string & var_name,
-                              const FEType & type,
-                              Real scale_factor,
-                              const std::set<SubdomainID> * const active_subdomains)
+DisplacedProblem::addVariable(const std::string & var_type,
+                              const std::string & name,
+                              InputParameters & parameters)
 {
-  _displaced_nl.addVariable(var_name, type, scale_factor, active_subdomains);
+  _displaced_nl.addVariable(var_type, name, parameters);
 }
 
 void
-DisplacedProblem::addArrayVariable(const std::string & var_name,
-                                   const FEType & type,
-                                   unsigned int components,
-                                   const std::vector<Real> & scale_factor,
-                                   const std::set<SubdomainID> * const active_subdomains)
+DisplacedProblem::addAuxVariable(const std::string & var_type,
+                                 const std::string & name,
+                                 InputParameters & parameters)
 {
-  _displaced_nl.addArrayVariable(var_name, type, components, scale_factor, active_subdomains);
-}
-
-void
-DisplacedProblem::addAuxVariable(const std::string & var_name,
-                                 const FEType & type,
-                                 const std::set<SubdomainID> * const active_subdomains)
-{
-  _displaced_aux.addVariable(var_name, type, 1.0, active_subdomains);
-}
-
-void
-DisplacedProblem::addAuxArrayVariable(const std::string & var_name,
-                                      const FEType & type,
-                                      unsigned int components,
-                                      const std::set<SubdomainID> * const active_subdomains)
-{
-  _displaced_aux.addArrayVariable(
-      var_name, type, components, std::vector<Real>(components, 1), active_subdomains);
-}
-
-void
-DisplacedProblem::addScalarVariable(const std::string & var_name,
-                                    Order order,
-                                    Real scale_factor,
-                                    const std::set<SubdomainID> * const active_subdomains)
-{
-  _displaced_nl.addScalarVariable(var_name, order, scale_factor, active_subdomains);
-}
-
-void
-DisplacedProblem::addAuxScalarVariable(const std::string & var_name,
-                                       Order order,
-                                       Real scale_factor,
-                                       const std::set<SubdomainID> * const active_subdomains)
-{
-  _displaced_aux.addScalarVariable(var_name, order, scale_factor, active_subdomains);
+  _displaced_aux.addVariable(var_type, name, parameters);
 }
 
 void

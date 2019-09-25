@@ -14,13 +14,21 @@
 
 #include "libmesh/quadrature.h"
 
-MooseVariableConstMonomial::MooseVariableConstMonomial(unsigned int var_num,
-                                                       const FEType & fe_type,
-                                                       SystemBase & sys,
-                                                       Assembly & assembly,
-                                                       Moose::VarKindType var_kind,
-                                                       THREAD_ID tid)
-  : MooseVariable(var_num, fe_type, sys, assembly, var_kind, tid)
+registerMooseObject("MooseApp", MooseVariableConstMonomial);
+
+template <>
+InputParameters
+validParams<MooseVariableConstMonomial>()
+{
+  auto params = validParams<MooseVariableBase>();
+  params.addClassDescription("Specialization for constant monomials that avoids unnecessary loops");
+  params.set<MooseEnum>("family") = "MONOMIAL";
+  params.set<MooseEnum>("order") = "CONSTANT";
+  return params;
+}
+
+MooseVariableConstMonomial::MooseVariableConstMonomial(const InputParameters & parameters)
+  : MooseVariable(parameters)
 {
 }
 

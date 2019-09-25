@@ -77,7 +77,19 @@ getIsotropicShearModulus(const T & elasticity_tensor) -> decltype(elasticity_ten
  * Get the bulk modulus for an isotropic elasticity tensor
  * param elasticity_tensor the tensor (must be isotropic, but not checked for efficiency)
  */
-Real getIsotropicBulkModulus(const RankFourTensor & elasticity_tensor);
+template <class T>
+auto
+getIsotropicBulkModulus(const T & elasticity_tensor) -> decltype(elasticity_tensor(0, 1, 0, 1))
+{
+   const auto shear_modulus = getIsotropicShearModulus(elasticity_tensor);
+  // dilatational modulus is defined as lambda plus two mu
+  const auto dilatational_modulus = elasticity_tensor(0, 0, 0, 0);
+  const auto lambda = dilatational_modulus - 2.0 * shear_modulus;
+  const auto bulk_modulus = lambda + 2.0 * shear_modulus / 3.0;
+  return bulk_modulus;
+}
+
+//Real getIsotropicBulkModulus(const RankFourTensor & elasticity_tensor);
 
 /**
  * Get the Young's modulus for an isotropic elasticity tensor

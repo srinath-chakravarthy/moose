@@ -94,7 +94,7 @@ RenameBoundaryGenerator::generate()
 
   if (isParamValid("old_boundary_name"))
   {
-    _old_boundary_name = getParam<std::vector<BoundaryName>>("old_boundary_id");
+    _old_boundary_name = getParam<std::vector<BoundaryName>>("old_boundary_name");
 
     _old_boundary_id.reserve(_old_boundary_name.size());
 

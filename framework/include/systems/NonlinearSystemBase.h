@@ -545,6 +545,12 @@ public:
   bool needBoundaryMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid) const;
 
   /**
+   * Indicated whether this system needs material properties on interfaces.
+   * @return Boolean if IntegratedBCs are active
+   */
+  bool needInterfaceMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid) const;
+
+  /**
    * Indicates whether this system needs material properties on internal sides.
    * @return Boolean if DGKernels are active
    */
@@ -663,7 +669,6 @@ public:
   FEProblemBase & _fe_problem;
   System & _sys;
   // FIXME: make these protected and create getters/setters
-  Real _last_rnorm;
   Real _last_nl_rnorm;
   Real _initial_residual_before_preset_bcs;
   Real _initial_residual_after_preset_bcs;

@@ -4486,6 +4486,9 @@ FEProblemBase::init()
   if (solverParams()._type == Moose::ST_JFNK)
     _nl->turnOffJacobian();
 
+  _nl->init();
+  _aux->init();
+
   {
     TIME_SECTION(_eq_init_timer);
     CONSOLE_TIMED_PRINT("Initializing equation system")
@@ -4501,12 +4504,8 @@ FEProblemBase::init()
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); ++tid)
     _assembly[tid]->init(_cm.get());
 
-  _nl->init();
-
   if (_displaced_problem)
     _displaced_problem->init();
-
-  _aux->init();
 
   _initialized = true;
 }
@@ -6239,22 +6238,7 @@ FEProblemBase::needBoundaryMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid)
 bool
 FEProblemBase::needInterfaceMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid)
 {
-  if (_bnd_mat_side_cache[tid].find(bnd_id) == _bnd_mat_side_cache[tid].end())
-  {
-    _bnd_mat_side_cache[tid][bnd_id] = false;
-
-    if (_nl->needInterfaceMaterialOnSide(bnd_id, tid))
-      _bnd_mat_side_cache[tid][bnd_id] = true;
-    else if (theWarehouse()
-                 .query()
-                 .condition<AttribThread>(tid)
-                 .condition<AttribInterfaces>(Interfaces::InterfaceUserObject)
-                 .condition<AttribBoundaries>(bnd_id)
-                 .count() > 0)
-      _bnd_mat_side_cache[tid][bnd_id] = true;
-  }
-
-  return _bnd_mat_side_cache[tid][bnd_id];
+  return _residual_interface_materials.hasActiveBoundaryObjects(bnd_id, tid);
 }
 
 bool

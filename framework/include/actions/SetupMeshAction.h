@@ -21,6 +21,8 @@ InputParameters validParams<SetupMeshAction>();
 class SetupMeshAction : public MooseObjectAction
 {
 public:
+  static InputParameters validParams();
+
   SetupMeshAction(InputParameters params);
 
   virtual void act() override;

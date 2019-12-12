@@ -28,6 +28,8 @@ public:
    * Class constructor
    * @param params Input parameters for this object
    */
+  static InputParameters validParams();
+
   CheckOutputAction(InputParameters params);
 
   virtual void act() override;

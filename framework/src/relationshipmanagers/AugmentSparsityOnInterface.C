@@ -1,3 +1,12 @@
+//* This file is part of the MOOSE framework
+//* https://www.mooseframework.org
+//*
+//* All rights reserved, see COPYRIGHT for full restrictions
+//* https://github.com/idaholab/moose/blob/master/COPYRIGHT
+//*
+//* Licensed under LGPL 2.1, please see LICENSE for details
+//* https://www.gnu.org/licenses/lgpl-2.1.html
+
 // App includes
 #include "AugmentSparsityOnInterface.h"
 #include "Executioner.h"
@@ -11,11 +20,12 @@ registerMooseObject("MooseApp", AugmentSparsityOnInterface);
 
 using namespace libMesh;
 
-template <>
+defineLegacyParams(AugmentSparsityOnInterface);
+
 InputParameters
-validParams<AugmentSparsityOnInterface>()
+AugmentSparsityOnInterface::validParams()
 {
-  InputParameters params = validParams<RelationshipManager>();
+  InputParameters params = RelationshipManager::validParams();
   params.addRequiredParam<BoundaryName>("master_boundary",
                                         "The name of the master boundary sideset.");
   params.addRequiredParam<BoundaryName>("slave_boundary",

@@ -23,6 +23,8 @@ InputParameters validParams<FEProblem>();
 class DumpObjectsProblem : public FEProblemBase
 {
 public:
+  static InputParameters validParams();
+
   DumpObjectsProblem(const InputParameters & parameters);
 
   using FEProblemBase::addVariable;

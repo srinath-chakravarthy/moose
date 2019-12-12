@@ -60,6 +60,8 @@ InputParameters validParams<SubProblem>();
 class SubProblem : public Problem
 {
 public:
+  static InputParameters validParams();
+
   SubProblem(const InputParameters & parameters);
   virtual ~SubProblem();
 

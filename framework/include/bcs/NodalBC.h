@@ -26,6 +26,8 @@ InputParameters validParams<NodalBC>();
 class NodalBC : public NodalBCBase, public MooseVariableInterface<Real>
 {
 public:
+  static InputParameters validParams();
+
   NodalBC(const InputParameters & parameters);
 
   /**

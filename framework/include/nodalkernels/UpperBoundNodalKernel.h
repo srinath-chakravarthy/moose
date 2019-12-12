@@ -23,6 +23,8 @@ InputParameters validParams<UpperBoundNodalKernel>();
 class UpperBoundNodalKernel : public NodalKernel
 {
 public:
+  static InputParameters validParams();
+
   UpperBoundNodalKernel(const InputParameters & parameters);
 
 protected:

@@ -28,6 +28,8 @@ class InterfaceMaterial : public MaterialBase,
                           public TwoMaterialPropertyInterface
 {
 public:
+  static InputParameters validParams();
+
   InterfaceMaterial(const InputParameters & parameters);
 
   virtual bool isInterfaceMaterial() override { return true; };

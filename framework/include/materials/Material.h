@@ -26,6 +26,8 @@ InputParameters validParams<Material>();
 class Material : public MaterialBase, public Coupleable, public MaterialPropertyInterface
 {
 public:
+  static InputParameters validParams();
+
   Material(const InputParameters & parameters);
 
   virtual void computeProperties() override;

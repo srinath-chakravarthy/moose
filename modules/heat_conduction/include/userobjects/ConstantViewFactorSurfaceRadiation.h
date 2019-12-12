@@ -25,7 +25,11 @@ InputParameters validParams<ConstantViewFactorSurfaceRadiation>();
 class ConstantViewFactorSurfaceRadiation : public GrayLambertSurfaceRadiationBase
 {
 public:
+  static InputParameters validParams();
+
   ConstantViewFactorSurfaceRadiation(const InputParameters & parameters);
+
+  virtual void initialize() override;
 
 protected:
   virtual std::vector<std::vector<Real>> setViewFactors() override;

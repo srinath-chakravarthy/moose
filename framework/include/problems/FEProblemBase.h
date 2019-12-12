@@ -51,7 +51,7 @@ class MultiMooseEnum;
 class MaterialPropertyStorage;
 class MaterialData;
 class MooseEnum;
-class Resurrector;
+class RestartableDataIO;
 class Assembly;
 class JacobianBlock;
 class Control;
@@ -98,7 +98,8 @@ enum class MooseNonlinearConvergenceReason
   CONVERGED_SNORM_RELATIVE = 4,
   DIVERGED_FUNCTION_COUNT = -2,
   DIVERGED_FNORM_NAN = -4,
-  DIVERGED_LINE_SEARCH = -6
+  DIVERGED_LINE_SEARCH = -6,
+  DIVERGED_DTOL = -9
 };
 
 // The idea with these enums is to abstract the reasons for
@@ -138,6 +139,8 @@ enum class MooseLinearConvergenceReason
 class FEProblemBase : public SubProblem, public Restartable
 {
 public:
+  static InputParameters validParams();
+
   FEProblemBase(const InputParameters & parameters);
   virtual ~FEProblemBase();
 
@@ -188,6 +191,7 @@ public:
    * @param snorm          Norm of the change in the solution vector
    * @param fnorm          Norm of the residual vector
    * @param rtol           Relative residual convergence tolerance
+   * @param divtol           Relative residual divergence tolerance
    * @param stol           Solution change convergence tolerance
    * @param abstol         Absolute residual convergence tolerance
    * @param nfuncs         Number of function evaluations
@@ -203,6 +207,7 @@ public:
                             const Real snorm,
                             const Real fnorm,
                             const Real rtol,
+                            const Real divtol,
                             const Real stol,
                             const Real abstol,
                             const PetscInt nfuncs,
@@ -960,20 +965,20 @@ public:
    * Get Transfers by ExecFlagType and direction
    */
   std::vector<std::shared_ptr<Transfer>> getTransfers(ExecFlagType type,
-                                                      MultiAppTransfer::DIRECTION direction) const;
+                                                      Transfer::DIRECTION direction) const;
 
   /**
    * Return the complete warehouse for MultiAppTransfer object for the given direction
    */
   const ExecuteMooseObjectWarehouse<Transfer> &
-  getMultiAppTransferWarehouse(MultiAppTransfer::DIRECTION direction) const;
+  getMultiAppTransferWarehouse(Transfer::DIRECTION direction) const;
 
   /**
    * Execute MultiAppTransfers associate with execution flag and direction.
    * @param type The execution flag to execute.
    * @param direction The direction (to or from) to transfer.
    */
-  void execMultiAppTransfers(ExecFlagType type, MultiAppTransfer::DIRECTION direction);
+  void execMultiAppTransfers(ExecFlagType type, Transfer::DIRECTION direction);
 
   /**
    * Execute the MultiApps associated with the ExecFlagType
@@ -1934,7 +1939,7 @@ protected:
   bool _has_initialized_stateful;
 
   /// Object responsible for restart (read/write)
-  std::unique_ptr<Resurrector> _resurrector;
+  std::unique_ptr<RestartableDataIO> _restart_io;
 
   /// true if the Jacobian is constant
   bool _const_jacobian;

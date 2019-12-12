@@ -84,10 +84,10 @@
   [./gray_lambert_cavity]
     type = CSVDiff
     input = 'gray_lambert_cavity.i'
-    csvdiff = 'gray_lambert_cavity_out.csv'
+    csvdiff = 'gray_lambert_cavity_out.csv gray_lambert_cavity_out_lambert_vpp_0001.csv gray_lambert_cavity_out_view_factors_0001.csv'
     cli_args = 'Outputs/csv=true'
     requirement = 'The system shall compute radiative transfer between gray Lambert surfaces'
-    design = 'ConstantViewFactorSurfaceRadiation.md'
+    design = 'ConstantViewFactorSurfaceRadiation.md SurfaceRadiationVectorPostprocessor.md ViewfactorVectorPostprocessor.md'
   [../]
 
   [./coupled_heat_conduction]
@@ -111,6 +111,14 @@
     type = CSVDiff
     input = 'gray_lambert_cavity_automatic_vf.i'
     csvdiff = 'gray_lambert_cavity_automatic_vf_out.csv'
+    requirement = 'The system shall compute radiative transfer between gray Lambert surfaces when the view factors are provided by a userobject'
+    design = 'ViewFactorObjectSurfaceRadiation.md'
+  [../]
+
+  [./gray_lambert_cavity_automatic_vf_3D]
+    type = CSVDiff
+    input = 'gray_lambert_cavity_automatic_vf_3D.i'
+    csvdiff = 'gray_lambert_cavity_automatic_vf_3D_out.csv'
     requirement = 'The system shall compute radiative transfer between gray Lambert surfaces when the view factors are provided by a userobject'
     design = 'ViewFactorObjectSurfaceRadiation.md'
   [../]

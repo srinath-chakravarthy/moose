@@ -24,6 +24,8 @@ template <ComputeStage compute_stage>
 class ADFunctionNeumannBC : public ADIntegratedBC<compute_stage>
 {
 public:
+  static InputParameters validParams();
+
   ADFunctionNeumannBC(const InputParameters & parameters);
 
 protected:

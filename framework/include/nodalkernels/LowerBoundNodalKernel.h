@@ -23,6 +23,8 @@ InputParameters validParams<LowerBoundNodalKernel>();
 class LowerBoundNodalKernel : public NodalKernel
 {
 public:
+  static InputParameters validParams();
+
   LowerBoundNodalKernel(const InputParameters & parameters);
 
 protected:

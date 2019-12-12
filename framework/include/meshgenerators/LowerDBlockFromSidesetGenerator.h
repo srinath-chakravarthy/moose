@@ -23,6 +23,8 @@ InputParameters validParams<LowerDBlockFromSidesetGenerator>();
 class LowerDBlockFromSidesetGenerator : public MeshGenerator
 {
 public:
+  static InputParameters validParams();
+
   LowerDBlockFromSidesetGenerator(const InputParameters & parameters);
 
   std::unique_ptr<MeshBase> generate() override;

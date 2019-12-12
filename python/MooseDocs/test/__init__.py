@@ -1,3 +1,12 @@
+#* This file is part of the MOOSE framework
+#* https://www.mooseframework.org
+#*
+#* All rights reserved, see COPYRIGHT for full restrictions
+#* https://github.com/idaholab/moose/blob/master/COPYRIGHT
+#*
+#* Licensed under LGPL 2.1, please see LICENSE for details
+#* https://www.gnu.org/licenses/lgpl-2.1.html
+
 import unittest
 import collections
 from MooseDocs.common import load_extensions
@@ -116,6 +125,12 @@ class MooseDocsTestCase(unittest.TestCase):
             self.assertLatexString(node(0), string)
         if nargs is not None:
             self.assertEqual(len(node['args']), nargs)
+
+    def assertLatexCommand(self, *args, **kwargs):
+        self.assertLatex(args[0], 'Command', *args[1:], **kwargs)
+
+    def assertLatexEnvironment(self, *args, **kwargs):
+        self.assertLatex(args[0], 'Environment', *args[1:], **kwargs)
 
     def assertLatexString(self, node, content, **kwargs):
         self.assertIsInstance(node, latex.String)

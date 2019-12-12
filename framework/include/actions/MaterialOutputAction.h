@@ -31,6 +31,8 @@ public:
    * Class constructor
    * @param params Input parameters for this action object
    */
+  static InputParameters validParams();
+
   MaterialOutputAction(InputParameters params);
   virtual void act() override;
 

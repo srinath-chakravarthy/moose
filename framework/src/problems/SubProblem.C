@@ -18,12 +18,12 @@
 #include "SystemBase.h"
 #include "Assembly.h"
 
-template <>
+defineLegacyParams(SubProblem);
+
 InputParameters
-validParams<SubProblem>()
+SubProblem::validParams()
 {
-  InputParameters params = validParams<Problem>();
-  params.addPrivateParam<MooseMesh *>("mesh");
+  InputParameters params = Problem::validParams();
 
   params.addParam<bool>(
       "default_ghosting",

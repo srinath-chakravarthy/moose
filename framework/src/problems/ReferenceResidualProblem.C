@@ -23,11 +23,12 @@
 
 registerMooseObject("MooseApp", ReferenceResidualProblem);
 
-template <>
+defineLegacyParams(ReferenceResidualProblem);
+
 InputParameters
-validParams<ReferenceResidualProblem>()
+ReferenceResidualProblem::validParams()
 {
-  InputParameters params = validParams<FEProblem>();
+  InputParameters params = FEProblem::validParams();
   params.addClassDescription("Problem that checks for convergence relative to "
                              "a user-supplied reference quantity rather than "
                              "the initial residual");
@@ -54,7 +55,13 @@ ReferenceResidualProblem::ReferenceResidualProblem(const InputParameters & param
   : FEProblem(params), _use_group_variables(false), _reference_vector(nullptr)
 {
   if (params.isParamValid("solution_variables"))
+  {
+    if (params.isParamValid("reference_vector"))
+      mooseDeprecated("The `solution_variables` parameter is deprecated, has no effect when "
+                      "the tagging system is used, and will be removed on January 1, 2020. "
+                      "Please simply delete this parameter from your input file.");
     _soln_var_names = params.get<std::vector<std::string>>("solution_variables");
+  }
 
   if (params.isParamValid("reference_residual_variables") &&
       params.isParamValid("reference_vector"))
@@ -65,9 +72,10 @@ ReferenceResidualProblem::ReferenceResidualProblem(const InputParameters & param
 
   if (params.isParamValid("reference_residual_variables"))
   {
-    mooseDeprecated("The save-in method for composing reference residual quantities is deprecated "
-                    "and will be removed on Januay 1, 2020. Please use the tagging system instead; "
-                    "specifically, please assign a TagName to the `reference_vector` parameter");
+    mooseDeprecated(
+        "The save-in method for composing reference residual quantities is deprecated "
+        "and will be removed on January 1, 2020. Please use the tagging system instead; "
+        "specifically, please assign a TagName to the `reference_vector` parameter");
 
     _ref_resid_var_names = params.get<std::vector<std::string>>("reference_residual_variables");
 
@@ -83,8 +91,8 @@ ReferenceResidualProblem::ReferenceResidualProblem(const InputParameters & param
   else
     mooseInfo("Neither the `reference_residual_variables` nor `reference_vector` parameter is "
               "specified for `ReferenceResidualProblem`, which means that no reference "
-              "quantites are set. The only way to achieve convergence will be through "
-              "nl_abs_tol which is generally not recommended as an indicator for convergence.");
+              "quantites are set. Because of this, the standard technique of comparing the "
+              "norm of the full residual vector with its initial value will be used.");
 
   if (params.isParamValid("group_variables"))
   {
@@ -128,6 +136,32 @@ ReferenceResidualProblem::addGroupVariables(std::set<std::string> & group_vars)
 void
 ReferenceResidualProblem::initialSetup()
 {
+  NonlinearSystemBase & nonlinear_sys = getNonlinearSystemBase();
+  AuxiliarySystem & aux_sys = getAuxiliarySystem();
+  System & s = nonlinear_sys.system();
+  TransientExplicitSystem & as = aux_sys.sys();
+
+  if (_soln_var_names.size() == 0)
+  {
+    // If the user provides reference_vector, that implies that they want the
+    // individual variables compared against their reference quantities in the
+    // tag vector. The code depends on having _soln_var_names populated,
+    // so fill that out if they didn't specify solution_variables.
+    if (_reference_vector)
+    {
+      for (unsigned int var_num = 0; var_num < s.n_vars(); var_num++)
+        _soln_var_names.push_back(s.variable_name(var_num));
+    }
+    // If they didn't provide reference_vector, that implies that they
+    // want to skip the individual variable comparison, so leave it alone.
+  }
+  else if (_soln_var_names.size() != s.n_vars())
+    mooseError("In ReferenceResidualProblem, size of solution_variables (",
+               _soln_var_names.size(),
+               ") != number of variables in system (",
+               s.n_vars(),
+               ")");
+
   _variable_group_num_index.resize(_soln_var_names.size());
 
   unsigned int group_variable_num = 0;
@@ -167,18 +201,6 @@ ReferenceResidualProblem::initialSetup()
       mooseError(
           "A variable cannot be included in multiple groups in the 'group_variables' parameter.");
   }
-
-  NonlinearSystemBase & nonlinear_sys = getNonlinearSystemBase();
-  AuxiliarySystem & aux_sys = getAuxiliarySystem();
-  System & s = nonlinear_sys.system();
-  TransientExplicitSystem & as = aux_sys.sys();
-
-  if (_soln_var_names.size() > 0 && _soln_var_names.size() != s.n_vars())
-    mooseError("In ReferenceResidualProblem, size of solution_variables (",
-               _soln_var_names.size(),
-               ") != number of variables in system (",
-               s.n_vars(),
-               ")");
 
   _soln_vars.clear();
   for (unsigned int i = 0; i < _soln_var_names.size(); ++i)
@@ -378,12 +400,13 @@ ReferenceResidualProblem::checkNonlinearConvergence(std::string & msg,
                                                     const Real snorm,
                                                     const Real fnorm,
                                                     const Real rtol,
+                                                    const Real /*divtol*/,
                                                     const Real stol,
                                                     const Real abstol,
                                                     const PetscInt nfuncs,
                                                     const PetscInt max_funcs,
                                                     const PetscBool force_iteration,
-                                                    const Real ref_resid,
+                                                    const Real initial_residual_before_preset_bcs,
                                                     const Real /*div_threshold*/)
 {
   updateReferenceResidual();
@@ -437,7 +460,7 @@ ReferenceResidualProblem::checkNonlinearConvergence(std::string & msg,
 
   if (reason == MooseNonlinearConvergenceReason::ITERATING)
   {
-    if (checkConvergenceIndividVars(fnorm, abstol, rtol, ref_resid))
+    if (checkConvergenceIndividVars(fnorm, abstol, rtol, initial_residual_before_preset_bcs))
     {
       if (_group_resid.size() > 0)
         oss << "Converged due to function norm "
@@ -449,9 +472,10 @@ ReferenceResidualProblem::checkNonlinearConvergence(std::string & msg,
             << " (relative tolerance)" << std::endl;
       reason = MooseNonlinearConvergenceReason::CONVERGED_FNORM_RELATIVE;
     }
-    else if (it >= _accept_iters &&
-             checkConvergenceIndividVars(
-                 fnorm, abstol * _accept_mult, rtol * _accept_mult, ref_resid))
+    else if (it >= _accept_iters && checkConvergenceIndividVars(fnorm,
+                                                                abstol * _accept_mult,
+                                                                rtol * _accept_mult,
+                                                                initial_residual_before_preset_bcs))
     {
       if (_group_resid.size() > 0)
         oss << "Converged due to function norm "
@@ -485,7 +509,7 @@ bool
 ReferenceResidualProblem::checkConvergenceIndividVars(const Real fnorm,
                                                       const Real abstol,
                                                       const Real rtol,
-                                                      const Real ref_resid)
+                                                      const Real initial_residual_before_preset_bcs)
 {
   bool convergedRelative = true;
   if (_group_resid.size() > 0)
@@ -495,7 +519,7 @@ ReferenceResidualProblem::checkConvergenceIndividVars(const Real fnorm,
           ((_group_resid[i] < _group_ref_resid[i] * rtol) || (_group_resid[i] < abstol));
   }
 
-  else if (fnorm > ref_resid * rtol)
+  else if (fnorm > initial_residual_before_preset_bcs * rtol)
     convergedRelative = false;
 
   return convergedRelative;

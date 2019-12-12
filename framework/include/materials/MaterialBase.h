@@ -27,6 +27,7 @@
 #include "MeshChangedInterface.h"
 #include "OutputInterface.h"
 #include "RandomInterface.h"
+#include "ElementIDInterface.h"
 #include "MaterialProperty.h"
 #include "MaterialData.h"
 #include "MathUtils.h"
@@ -59,9 +60,12 @@ class MaterialBase : public MooseObject,
                      public Restartable,
                      public MeshChangedInterface,
                      public OutputInterface,
-                     public RandomInterface
+                     public RandomInterface,
+                     public ElementIDInterface
 {
 public:
+  static InputParameters validParams();
+
   MaterialBase(const InputParameters & parameters);
 
   /**

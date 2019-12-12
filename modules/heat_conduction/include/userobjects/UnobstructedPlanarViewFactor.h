@@ -23,6 +23,8 @@ InputParameters validParams<UnobstructedPlanarViewFactor>();
 class UnobstructedPlanarViewFactor : public ViewFactorBase
 {
 public:
+  static InputParameters validParams();
+
   UnobstructedPlanarViewFactor(const InputParameters & parameters);
 
   virtual void execute() override;
@@ -47,4 +49,7 @@ protected:
   const std::vector<Point> * _current_remote_normals;
   std::vector<Real> _current_remote_coord;
   ///@}
+
+  unsigned int _exponent;
+  Real _divisor;
 };

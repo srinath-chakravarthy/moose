@@ -59,11 +59,12 @@
 static const int GRAIN_SIZE =
     1; // the grain_size does not have much influence on our execution speed
 
-template <>
+defineLegacyParams(MooseMesh);
+
 InputParameters
-validParams<MooseMesh>()
+MooseMesh::validParams()
 {
-  InputParameters params = validParams<MooseObject>();
+  InputParameters params = MooseObject::validParams();
 
   MooseEnum parallel_type("DEFAULT REPLICATED DISTRIBUTED", "DEFAULT");
   params.addParam<MooseEnum>("parallel_type",
@@ -2129,7 +2130,8 @@ MooseMesh::init()
     {
       TIME_SECTION(_read_recovered_mesh_timer);
       CONSOLE_TIMED_PRINT("Rcovering mesh");
-      getMesh().read(_app.getRecoverFileBase() + "_mesh." + _app.getRecoverFileSuffix());
+      getMesh().read(_app.getRestartRecoverFileBase() + "_mesh." +
+                     _app.getRestartRecoverFileSuffix());
     }
 
     getMesh().allow_renumbering(allow_renumbering_later);

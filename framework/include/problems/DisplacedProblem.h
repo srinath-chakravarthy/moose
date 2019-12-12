@@ -38,6 +38,8 @@ InputParameters validParams<DisplacedProblem>();
 class DisplacedProblem : public SubProblem
 {
 public:
+  static InputParameters validParams();
+
   DisplacedProblem(const InputParameters & parameters);
 
   virtual EquationSystems & es() override { return _eq; }

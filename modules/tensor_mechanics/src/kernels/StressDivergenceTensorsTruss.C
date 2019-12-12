@@ -17,11 +17,12 @@
 
 registerMooseObject("TensorMechanicsApp", StressDivergenceTensorsTruss);
 
-template <>
+defineLegacyParams(StressDivergenceTensorsTruss);
+
 InputParameters
-validParams<StressDivergenceTensorsTruss>()
+StressDivergenceTensorsTruss::validParams()
 {
-  InputParameters params = validParams<Kernel>();
+  InputParameters params = Kernel::validParams();
   params.addClassDescription("Kernel for truss element");
   params.addRequiredParam<unsigned int>("component",
                                         "An integer corresponding to the direction "
@@ -124,6 +125,10 @@ StressDivergenceTensorsTruss::computeOffDiagJacobian(MooseVariableFEBase & jvar)
     computeJacobian();
   else
   {
+    // This (undisplaced) jvar could potentially yield the wrong phi size if this object is acting
+    // on the displaced mesh
+    auto phi_size = _sys.getVariable(_tid, jvar.number()).dofIndices().size();
+
     unsigned int coupled_component = 0;
     bool disp_coupled = false;
 
@@ -140,7 +145,7 @@ StressDivergenceTensorsTruss::computeOffDiagJacobian(MooseVariableFEBase & jvar)
       prepareMatrixTag(_assembly, _var.number(), jvar_num);
 
       for (unsigned int i = 0; i < _test.size(); ++i)
-        for (unsigned int j = 0; j < jvar.phiSize(); ++j)
+        for (unsigned int j = 0; j < phi_size; ++j)
           _local_ke(i, j) += (i == j ? 1 : -1) * computeStiffness(_component, coupled_component);
 
       accumulateTaggedLocalMatrix();

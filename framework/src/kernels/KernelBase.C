@@ -23,12 +23,12 @@ InputParameters
 KernelBase::validParams()
 {
   auto params = MooseObject::validParams();
-  params += ::validParams<TransientInterface>();
-  params += ::validParams<BlockRestrictable>();
-  params += ::validParams<RandomInterface>();
-  params += ::validParams<MeshChangedInterface>();
-  params += ::validParams<MaterialPropertyInterface>();
-  params += ::validParams<TaggingInterface>();
+  params += TransientInterface::validParams();
+  params += BlockRestrictable::validParams();
+  params += RandomInterface::validParams();
+  params += MeshChangedInterface::validParams();
+  params += MaterialPropertyInterface::validParams();
+  params += TaggingInterface::validParams();
 
   params.addRequiredParam<NonlinearVariableName>(
       "variable", "The name of the variable that this Kernel operates on");
@@ -77,6 +77,7 @@ KernelBase::KernelBase(const InputParameters & parameters)
     Restartable(this, "Kernels"),
     MeshChangedInterface(parameters),
     TaggingInterface(this),
+    ElementIDInterface(this),
     _subproblem(*getCheckedPointerParam<SubProblem *>("_subproblem")),
     _fe_problem(*parameters.get<FEProblemBase *>("_fe_problem_base")),
     _sys(*getCheckedPointerParam<SystemBase *>("_sys")),

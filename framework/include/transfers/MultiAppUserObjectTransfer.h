@@ -10,7 +10,7 @@
 #pragma once
 
 // MOOSE includes
-#include "MultiAppFieldTransfer.h"
+#include "MultiAppConservativeTransfer.h"
 
 // Forward declarations
 class MultiAppUserObjectTransfer;
@@ -23,9 +23,11 @@ InputParameters validParams<MultiAppUserObjectTransfer>();
  * the MultiApp is.  Copies that value into a postprocessor in the
  * MultiApp.
  */
-class MultiAppUserObjectTransfer : public MultiAppFieldTransfer
+class MultiAppUserObjectTransfer : public MultiAppConservativeTransfer
 {
 public:
+  static InputParameters validParams();
+
   MultiAppUserObjectTransfer(const InputParameters & parameters);
 
   virtual void execute() override;

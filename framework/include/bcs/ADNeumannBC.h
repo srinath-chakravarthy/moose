@@ -24,6 +24,8 @@ template <ComputeStage compute_stage>
 class ADNeumannBC : public ADIntegratedBC<compute_stage>
 {
 public:
+  static InputParameters validParams();
+
   ADNeumannBC(const InputParameters & parameters);
 
 protected:

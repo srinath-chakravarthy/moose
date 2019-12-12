@@ -505,7 +505,7 @@ typedef VectorVariableTestSecond ADVectorVariableTestSecond;
   template <>                                                                                      \
   InputParameters validParams<ADObjectType<JACOBIAN>>()                                            \
   {                                                                                                \
-    return ADObjectType<RESIDUAL>::validParams();                                                  \
+    return ADObjectType<JACOBIAN>::validParams();                                                  \
   }                                                                                                \
   void mooseClangFormatFunction()
 
@@ -637,6 +637,15 @@ enum class MortarType : unsigned int
   Slave = static_cast<unsigned int>(Moose::ElementType::Element),
   Master = static_cast<unsigned int>(Moose::ElementType::Neighbor),
   Lower = static_cast<unsigned int>(Moose::ElementType::Lower)
+};
+
+/**
+ * The filter type applied to a particular piece of "restartable" data. These filters
+ * will be applied during deserialization to include or exclude data as appropriate.
+ */
+enum class RESTARTABLE_FILTER : unsigned char
+{
+  RECOVERABLE
 };
 
 enum ConstraintJacobianType
@@ -945,3 +954,6 @@ DerivativeStringClass(TagName);
 
 /// Name of MeshGenerators
 DerivativeStringClass(MeshGeneratorName);
+
+/// Name of extra element IDs
+DerivativeStringClass(ExtraElementIDName);

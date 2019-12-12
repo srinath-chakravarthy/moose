@@ -22,6 +22,8 @@ InputParameters validParams<ReactionNodalKernel>();
 class ReactionNodalKernel : public NodalKernel
 {
 public:
+  static InputParameters validParams();
+
   ReactionNodalKernel(const InputParameters & parameters);
 
 protected:

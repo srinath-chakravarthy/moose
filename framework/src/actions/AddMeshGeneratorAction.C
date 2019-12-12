@@ -15,11 +15,12 @@
 
 registerMooseAction("MooseApp", AddMeshGeneratorAction, "add_mesh_generator");
 
-template <>
+defineLegacyParams(AddMeshGeneratorAction);
+
 InputParameters
-validParams<AddMeshGeneratorAction>()
+AddMeshGeneratorAction::validParams()
 {
-  InputParameters params = validParams<MooseObjectAction>();
+  InputParameters params = MooseObjectAction::validParams();
   return params;
 }
 
@@ -30,12 +31,6 @@ AddMeshGeneratorAction::AddMeshGeneratorAction(InputParameters params) : MooseOb
 void
 AddMeshGeneratorAction::act()
 {
-  // Don't do mesh generators when recovering as the master app or using master mesh! We do need to
-  // run MeshGenerators for sub-apps because we don't currently have checkpoint/restart information
-  // for the sub-app meshes; e.g. we just need to re-build them
-  if ((_app.isRecovering() && _app.isUltimateMaster()) || _app.masterMesh())
-    return;
-
   if (!_mesh)
     mooseError("No mesh file was supplied and no generation block was provided");
 

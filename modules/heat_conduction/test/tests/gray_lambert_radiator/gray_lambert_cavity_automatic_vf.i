@@ -5,8 +5,8 @@
   xmax = 1
   ymin = 0
   ymax = 2
-  nx = 1
-  ny = 1
+  nx = 20
+  ny = 20
 []
 
 [Problem]

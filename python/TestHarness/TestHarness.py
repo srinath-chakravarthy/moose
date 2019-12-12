@@ -32,7 +32,7 @@ def readTestRoot(fname):
     if root.find('run_tests_args'):
         args = shlex.split(root.param('run_tests_args'))
 
-    hit_node = HitNode(hitnode=root)
+    hit_node = HitNode(None, root)
     hit_parse(hit_node, root, '')
 
     # TODO: add check to see if the binary exists before returning. This can be used to
@@ -63,7 +63,7 @@ class TestHarness:
         os.environ['PYTHONPATH'] = os.path.join(moose_dir, 'python') + ':' + os.environ.get('PYTHONPATH', '')
 
         if app_name:
-            rootdir, app_name, args, root_params = '.', app_name, [], HitNode(hitnode=hit.parse('',''))
+            rootdir, app_name, args, root_params = '.', app_name, [], HitNode(None, hit.parse('',''))
         else:
             rootdir, app_name, args, root_params = findTestRoot(start=os.getcwd())
 
@@ -156,6 +156,7 @@ class TestHarness:
             checks['asio'] =  set(['ALL'])
             checks['boost'] = set(['ALL'])
             checks['fparser_jit'] = set(['ALL'])
+            checks['libpng'] = set(['ALL'])
         else:
             checks['compiler'] = util.getCompilers(self.libmesh_dir)
             checks['petsc_version'] = util.getPetscVersion(self.libmesh_dir)
@@ -183,6 +184,7 @@ class TestHarness:
             checks['asio'] =  util.getIfAsioExists(self.moose_dir)
             checks['boost'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'boost')
             checks['fparser_jit'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'fparser_jit')
+            checks['libpng'] = util.getMooseConfigOption(self.moose_dir, 'libpng')
 
         # Override the MESH_MODE option if using the '--distributed-mesh'
         # or (deprecated) '--parallel-mesh' option.

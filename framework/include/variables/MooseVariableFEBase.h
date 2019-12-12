@@ -27,6 +27,8 @@ InputParameters validParams<MooseVariableFEBase>();
 class MooseVariableFEBase : public MooseVariableBase
 {
 public:
+  static InputParameters validParams();
+
   MooseVariableFEBase(const InputParameters & parameters);
 
   /**

@@ -20,6 +20,8 @@ InputParameters validParams<PenaltyDirichletNodalKernel>();
 class PenaltyDirichletNodalKernel : public NodalKernel
 {
 public:
+  static InputParameters validParams();
+
   PenaltyDirichletNodalKernel(const InputParameters & parameters);
 
 protected:

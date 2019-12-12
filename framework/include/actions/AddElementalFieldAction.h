@@ -19,6 +19,8 @@ InputParameters validParams<AddElementalFieldAction>();
 class AddElementalFieldAction : public AddVariableAction
 {
 public:
+  static InputParameters validParams();
+
   AddElementalFieldAction(InputParameters params);
 
   virtual void act() override;

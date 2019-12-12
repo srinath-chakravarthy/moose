@@ -23,6 +23,8 @@ InputParameters validParams<CoupledForceNodalKernel>();
 class CoupledForceNodalKernel : public NodalKernel
 {
 public:
+  static InputParameters validParams();
+
   CoupledForceNodalKernel(const InputParameters & parameters);
 
 protected:

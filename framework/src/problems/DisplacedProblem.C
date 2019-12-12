@@ -25,11 +25,13 @@
 
 registerMooseObject("MooseApp", DisplacedProblem);
 
-template <>
+defineLegacyParams(DisplacedProblem);
+
 InputParameters
-validParams<DisplacedProblem>()
+DisplacedProblem::validParams()
 {
-  InputParameters params = validParams<SubProblem>();
+  InputParameters params = SubProblem::validParams();
+  params.addPrivateParam<MooseMesh *>("mesh");
   params.addPrivateParam<std::vector<std::string>>("displacements");
   return params;
 }

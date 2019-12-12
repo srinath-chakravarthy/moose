@@ -14,11 +14,12 @@
 
 #include <cmath>
 
-template <>
+defineLegacyParams(GrayLambertSurfaceRadiationBase);
+
 InputParameters
-validParams<GrayLambertSurfaceRadiationBase>()
+GrayLambertSurfaceRadiationBase::validParams()
 {
-  InputParameters params = validParams<SideUserObject>();
+  InputParameters params = SideUserObject::validParams();
   params.addParam<Real>(
       "stefan_boltzmann_constant",
       5.670367e-8,
@@ -172,23 +173,6 @@ GrayLambertSurfaceRadiationBase::initialize()
   // time to compute them on exec initial
   _view_factors = setViewFactors();
 
-  // check row-sum and normalize if necessary
-  for (unsigned int i = 0; i < _n_sides; ++i)
-  {
-    Real sum = 0;
-    for (auto & v : _view_factors[i])
-      sum += v;
-
-    // an error of 5% is acceptable, but more indicates an error in the
-    // problem setup
-    if (std::abs(sum - 1) > 0.05)
-      mooseError("view_factors row ", i, " sums to ", sum);
-
-    // correct view factors
-    for (auto & v : _view_factors[i])
-      v /= sum;
-  }
-
   // initialize areas, beta, side temps
   for (unsigned int j = 0; j < _n_sides; ++j)
   {
@@ -272,6 +256,15 @@ GrayLambertSurfaceRadiationBase::threadJoin(const UserObject & y)
   }
 }
 
+std::set<BoundaryID>
+GrayLambertSurfaceRadiationBase::getSurfaceIDs() const
+{
+  std::set<BoundaryID> surface_ids;
+  for (auto & p : _side_id_index)
+    surface_ids.insert(p.first);
+  return surface_ids;
+}
+
 Real
 GrayLambertSurfaceRadiationBase::getSurfaceIrradiation(BoundaryID id) const
 {
@@ -310,4 +303,14 @@ GrayLambertSurfaceRadiationBase::getSurfaceEmissivity(BoundaryID id) const
   if (_side_id_index.find(id) == _side_id_index.end())
     return 1;
   return _emissivity[_side_id_index.find(id)->second];
+}
+
+Real
+GrayLambertSurfaceRadiationBase::getViewFactor(BoundaryID from_id, BoundaryID to_id) const
+{
+  if (_side_id_index.find(from_id) == _side_id_index.end())
+    return 0;
+  if (_side_id_index.find(to_id) == _side_id_index.end())
+    return 0;
+  return _view_factors[_side_id_index.find(from_id)->second][_side_id_index.find(to_id)->second];
 }

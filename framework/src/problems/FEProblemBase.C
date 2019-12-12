@@ -11,7 +11,7 @@
 #include "AuxiliarySystem.h"
 #include "MaterialPropertyStorage.h"
 #include "MooseEnum.h"
-#include "Resurrector.h"
+#include "RestartableDataIO.h"
 #include "Factory.h"
 #include "MooseUtils.h"
 #include "DisplacedProblem.h"
@@ -113,11 +113,12 @@ sortMooseVariables(MooseVariableFEBase * a, MooseVariableFEBase * b)
 
 Threads::spin_mutex get_function_mutex;
 
-template <>
+defineLegacyParams(FEProblemBase);
+
 InputParameters
-validParams<FEProblemBase>()
+FEProblemBase::validParams()
 {
-  InputParameters params = validParams<SubProblem>();
+  InputParameters params = SubProblem::validParams();
   params.addParam<unsigned int>("null_space_dimension", 0, "The dimension of the nullspace");
   params.addParam<unsigned int>(
       "transpose_null_space_dimension", 0, "The dimension of the transpose nullspace");
@@ -194,6 +195,8 @@ validParams<FEProblemBase>()
                                         "Extra matrices to add to the system that can be filled "
                                         "by objects which compute residuals and Jacobians "
                                         "(Kernels, BCs, etc.) by setting tags on them.");
+
+  params.addPrivateParam<MooseMesh *>("mesh");
 
   return params;
 }
@@ -366,7 +369,7 @@ FEProblemBase::FEProblemBase(const InputParameters & parameters)
   _bnd_mat_side_cache.resize(n_threads);
   _interface_mat_side_cache.resize(n_threads);
 
-  _resurrector = libmesh_make_unique<Resurrector>(*this);
+  _restart_io = libmesh_make_unique<RestartableDataIO>(*this);
 
   _eq.parameters.set<FEProblemBase *>("_fe_problem_base") = this;
 
@@ -378,7 +381,6 @@ FEProblemBase::FEProblemBase(const InputParameters & parameters)
   {
     std::string restart_file_base = getParam<FileNameNoExtension>("restart_file_base");
     restart_file_base = MooseUtils::convertLatestCheckpoint(restart_file_base);
-    _console << "\nUsing " << restart_file_base << " for restart.\n\n";
     setRestartFile(restart_file_base);
   }
 
@@ -635,23 +637,26 @@ FEProblemBase::initialSetup()
 #endif
   }
 
-  // Perform output related setups
-  _app.getOutputWarehouse().initialSetup();
-
-  // Flush all output to _console that occur during construction and initialization of objects
-  _app.getOutputWarehouse().mooseConsole();
-
   if (_app.isRecovering() && (_app.isUltimateMaster() || _force_restart))
   {
-    _resurrector->setRestartFile(_app.getRecoverFileBase());
-    if (_app.getRecoverFileSuffix() == "cpa")
-      _resurrector->setRestartSuffix("xda");
+    if (_app.getRestartRecoverFileSuffix() == "cpa")
+      _restart_io->useAsciiExtension();
   }
 
   if ((_app.isRestarting() || _app.isRecovering()) && (_app.isUltimateMaster() || _force_restart))
   {
     CONSOLE_TIMED_PRINT("Restarting from file");
-    _resurrector->restartFromFile();
+
+    _restart_io->readRestartableDataHeader(true);
+    _restart_io->restartEquationSystemsObject();
+
+    /**
+     * TODO: Move the RestartableDataIO call to reload data here. Only a few tests fail when doing
+     * this now. Material Properties aren't sized properly at this point and fail across the board,
+     * there are a few other misc tests that fail too.
+     *
+     * _restart_io->readRestartableData();
+     */
   }
   else
   {
@@ -664,6 +669,12 @@ FEProblemBase::initialSetup()
       _aux->copyVars(*reader);
     }
   }
+
+  // Perform output related setups
+  _app.getOutputWarehouse().initialSetup();
+
+  // Flush all output to _console that occur during construction and initialization of objects
+  _app.getOutputWarehouse().mooseConsole();
 
   // Build Refinement and Coarsening maps for stateful material projections if necessary
   if (_adaptivity.isOn() &&
@@ -807,7 +818,6 @@ FEProblemBase::initialSetup()
     if (n && !_app.isUltimateMaster() && _app.isRestarting())
       mooseError("Cannot perform initial adaptivity during restart on sub-apps of a MultiApp!");
 
-    CONSOLE_TIMED_PRINT("Adapting initial mesh");
     initialAdaptMesh();
   }
 
@@ -887,7 +897,7 @@ FEProblemBase::initialSetup()
     {
       CONSOLE_TIMED_PRINT("Restoring restart data");
 
-      _resurrector->restartRestartableData();
+      _restart_io->readRestartableData(_app.getRestartableData(), _app.getRecoverableData());
     }
 
     // We may have just clobbered initial conditions that were explicitly set
@@ -917,8 +927,22 @@ FEProblemBase::initialSetup()
 
   // Call initialSetup on the transfers
   _transfers.initialSetup();
-  _to_multi_app_transfers.initialSetup();
-  _from_multi_app_transfers.initialSetup();
+
+  // Call initialSetup on the MultiAppTransfers to be executed on TO_MULTIAPP
+  const auto & to_multi_app_objects = _to_multi_app_transfers.getActiveObjects();
+  for (const auto & transfer : to_multi_app_objects)
+  {
+    transfer->setCurrentDirection(Transfer::DIRECTION::TO_MULTIAPP);
+    transfer->initialSetup();
+  }
+
+  // Call initialSetup on the MultiAppTransfers to be executed on FROM_MULTIAPP
+  const auto & from_multi_app_objects = _from_multi_app_transfers.getActiveObjects();
+  for (const auto & transfer : from_multi_app_objects)
+  {
+    transfer->setCurrentDirection(Transfer::DIRECTION::FROM_MULTIAPP);
+    transfer->initialSetup();
+  }
 
   if (!_app.isRecovering())
   {
@@ -1874,8 +1898,9 @@ FEProblemBase::addSampler(std::string type, const std::string & name, InputParam
 {
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); tid++)
   {
-    std::shared_ptr<Sampler> dist = _factory.create<Sampler>(type, name, parameters, tid);
-    _samplers.addObject(dist, tid);
+    std::shared_ptr<Sampler> obj = _factory.create<Sampler>(type, name, parameters, tid);
+    obj->init();
+    _samplers.addObject(obj, tid);
   }
 }
 
@@ -3341,7 +3366,11 @@ FEProblemBase::execute(const ExecFlagType & exec_type)
       _displaced_problem->setCurrentlyComputingJacobian(true);
   }
 
-  // Samplers
+  // Samplers; EXEC_INITIAL is not called because the Sampler::init() method that is called after
+  // construction makes the first Sampler::execute() call. This ensures that the random number
+  // generator object is the correct state prior to any other object (e.g., Transfers) attempts to
+  // extract data from the Sampler. That is, if the Sampler::execute() call is delayed to here then
+  // it is not in the correct state for other objects.
   if (exec_type != EXEC_INITIAL)
     executeSamplers(exec_type);
 
@@ -3829,7 +3858,7 @@ FEProblemBase::getMultiApp(const std::string & multi_app_name) const
 }
 
 void
-FEProblemBase::execMultiAppTransfers(ExecFlagType type, MultiAppTransfer::DIRECTION direction)
+FEProblemBase::execMultiAppTransfers(ExecFlagType type, Transfer::DIRECTION direction)
 {
   bool to_multiapp = direction == MultiAppTransfer::TO_MULTIAPP;
   std::string string_direction = to_multiapp ? " To " : " From ";
@@ -3845,7 +3874,10 @@ FEProblemBase::execMultiAppTransfers(ExecFlagType type, MultiAppTransfer::DIRECT
     _console << COLOR_CYAN << "\nStarting Transfers on " << Moose::stringify(type)
              << string_direction << "MultiApps" << COLOR_DEFAULT << std::endl;
     for (const auto & transfer : transfers)
+    {
+      transfer->setCurrentDirection(direction);
       transfer->execute();
+    }
 
     MooseUtils::parallelBarrierNotify(_communicator, _parallel_barrier_messaging);
 
@@ -3858,7 +3890,7 @@ FEProblemBase::execMultiAppTransfers(ExecFlagType type, MultiAppTransfer::DIRECT
 }
 
 std::vector<std::shared_ptr<Transfer>>
-FEProblemBase::getTransfers(ExecFlagType type, MultiAppTransfer::DIRECTION direction) const
+FEProblemBase::getTransfers(ExecFlagType type, Transfer::DIRECTION direction) const
 {
   const MooseObjectWarehouse<Transfer> & wh = direction == MultiAppTransfer::TO_MULTIAPP
                                                   ? _to_multi_app_transfers[type]
@@ -3867,7 +3899,7 @@ FEProblemBase::getTransfers(ExecFlagType type, MultiAppTransfer::DIRECTION direc
 }
 
 const ExecuteMooseObjectWarehouse<Transfer> &
-FEProblemBase::getMultiAppTransferWarehouse(MultiAppTransfer::DIRECTION direction) const
+FEProblemBase::getMultiAppTransferWarehouse(Transfer::DIRECTION direction) const
 {
   if (direction == MultiAppTransfer::TO_MULTIAPP)
     return _to_multi_app_transfers;
@@ -4090,9 +4122,9 @@ FEProblemBase::addTransfer(const std::string & transfer_name,
       std::dynamic_pointer_cast<MultiAppTransfer>(transfer);
   if (multi_app_transfer)
   {
-    if (multi_app_transfer->direction() == MultiAppTransfer::TO_MULTIAPP)
+    if (multi_app_transfer->directions().contains(MultiAppTransfer::TO_MULTIAPP))
       _to_multi_app_transfers.addObject(multi_app_transfer);
-    else
+    if (multi_app_transfer->directions().contains(MultiAppTransfer::FROM_MULTIAPP))
       _from_multi_app_transfers.addObject(multi_app_transfer);
   }
   else
@@ -5532,7 +5564,7 @@ FEProblemBase::initialAdaptMesh()
 
     for (unsigned int i = 0; i < n; i++)
     {
-      _console << "Initial adaptivity step " << i + 1 << " of " << n << std::endl;
+      CONSOLE_TIMED_PRINT("Initial adaptivity step ", i + 1, " of ", n);
       computeIndicators();
       computeMarkers();
 
@@ -5571,7 +5603,7 @@ FEProblemBase::adaptMesh()
 
   for (unsigned int i = 0; i < cycles_per_step; ++i)
   {
-    _console << "Adaptivity step " << i + 1 << " of " << cycles_per_step << '\n';
+    CONSOLE_TIMED_PRINT("Adaptivity step ", i + 1, " of ", cycles_per_step);
 
     // Markers were already computed once by Executioner
     if (_adaptivity.getRecomputeMarkersFlag() && i > 0)
@@ -6098,9 +6130,14 @@ void
 FEProblemBase::setRestartFile(const std::string & file_name)
 {
   _app.setRestart(true);
-  _resurrector->setRestartFile(file_name);
-  if (_app.getRecoverFileSuffix() == "cpa")
-    _resurrector->setRestartSuffix("xda");
+
+  if (!_app.isRecovering())
+  {
+    _app.setRestartRecoverFileBase(file_name);
+    mooseInfo("Restart file ", file_name, " is NOT being used since we are performing recovery.");
+  }
+  else
+    mooseInfo("Using ", file_name, " for restart.");
 }
 
 std::vector<VariableName>
@@ -6124,6 +6161,7 @@ FEProblemBase::checkNonlinearConvergence(std::string & msg,
                                          const Real snorm,
                                          const Real fnorm,
                                          const Real rtol,
+                                         const Real divtol,
                                          const Real stol,
                                          const Real abstol,
                                          const PetscInt nfuncs,
@@ -6185,6 +6223,12 @@ FEProblemBase::checkNonlinearConvergence(std::string & msg,
       oss << "Converged due to small update length: " << snorm << " < " << stol << " * " << xnorm
           << '\n';
       reason = MooseNonlinearConvergenceReason::CONVERGED_SNORM_RELATIVE;
+    }
+    else if (divtol > 0 && fnorm > the_residual * divtol)
+    {
+      oss << "Diverged due to initial residual " << the_residual << " > divergence tolerance "
+          << divtol << " * initial residual " << the_residual << '\n';
+      reason = MooseNonlinearConvergenceReason::DIVERGED_DTOL;
     }
   }
 
@@ -6317,10 +6361,28 @@ FEProblemBase::addOutput(const std::string & object_type,
       parameters.set<ExecFlagEnum>("execute_input_on") = EXEC_INITIAL;
   }
 
-  // Apply the common parameters
+  // Apply the common parameters loaded with Outputs input syntax
   InputParameters * common = output_warehouse.getCommonParameters();
   if (common)
     parameters.applyParameters(*common, exclude);
+
+  // If file_base parameter has not been set with the common parameters, we inquire app to set it
+  // here
+  if (parameters.have_parameter<std::string>("file_base") &&
+      !parameters.isParamSetByUser("file_base"))
+  {
+    if (parameters.get<bool>("_built_by_moose"))
+      // if this is a master app, file_base here will be input file name plus _out
+      // because otherwise this parameter has been set.
+      // if this is a subapp, file_base here will be the one generated by master in the master's
+      // MulitApp.
+      parameters.set<std::string>("file_base") = _app.getOutputFileBase();
+    else
+      // if this is a master app, file_bsse here will be input file name.
+      // if this is a subapp, file_base will be the one generated by master in the master's
+      // MultiApp. file_base for a subapp here is identical with those of _built_by_moose.
+      parameters.set<std::string>("file_base") = _app.getOutputFileBase(true) + "_" + object_name;
+  }
 
   // Set the correct value for the binary flag for XDA/XDR output
   if (object_type == "XDR")

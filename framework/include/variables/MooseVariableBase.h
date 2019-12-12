@@ -37,6 +37,8 @@ class MooseMesh;
 class MooseVariableBase : public MooseObject, public BlockRestrictable, public OutputInterface
 {
 public:
+  static InputParameters validParams();
+
   MooseVariableBase(const InputParameters & parameters);
 
   /**

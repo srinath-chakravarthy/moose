@@ -70,9 +70,10 @@
 
 #define QUOTE(macro) stringifyName(macro)
 
-template <>
+defineLegacyParams(MooseApp);
+
 InputParameters
-validParams<MooseApp>()
+MooseApp::validParams()
 {
   InputParameters params = emptyInputParameters();
 
@@ -274,6 +275,7 @@ MooseApp::MooseApp(InputParameters parameters)
     _comm(getParam<std::shared_ptr<Parallel::Communicator>>("_comm")),
     _perf_graph(type() + " (" + name() + ')'),
     _rank_map(*_comm, _perf_graph),
+    _file_base_set_by_user(false),
     _output_position_set(false),
     _start_time_set(false),
     _start_time(0.0),
@@ -300,7 +302,7 @@ MooseApp::MooseApp(InputParameters parameters)
 #else
     _trap_fpe(false),
 #endif
-    _recover_suffix("cpr"),
+    _restart_recover_suffix("cpr"),
     _half_transient(false),
     _check_input(getParam<bool>("check_input")),
     _restartable_data(libMesh::n_threads()),
@@ -328,12 +330,11 @@ MooseApp::MooseApp(InputParameters parameters)
     _automatic_automatic_scaling(getParam<bool>("automatic_automatic_scaling")),
     _popped_final_mesh_generator(false)
 {
-
 #ifdef HAVE_GPERFTOOLS
-  if (std::getenv("MOOSE_PARALLEL_PROFILE"))
+  if (std::getenv("MOOSE_PROFILE_BASE"))
   {
     static std::string profile_file =
-        std::getenv("MOOSE_PARALLEL_PROFILE") + std::to_string(_comm->rank()) + ".prof";
+        std::getenv("MOOSE_PROFILE_BASE") + std::to_string(_comm->rank()) + ".prof";
     _profiling = true;
     ProfilerStart(profile_file.c_str());
   }
@@ -751,6 +752,12 @@ MooseApp::setupOptions()
     Moose::out << "**END SYNTAX DATA**\n" << std::endl;
     _ready_to_exit = true;
   }
+  else if (getParam<bool>("apptype"))
+  {
+    Moose::perf_log.disable_logging();
+    Moose::out << "MooseApp Type: " << type() << std::endl;
+    _ready_to_exit = true;
+  }
   else if (_input_filename != "" ||
            isParamValid("input_file")) // They already specified an input filename
   {
@@ -769,7 +776,7 @@ MooseApp::setupOptions()
       // If the argument following --recover is non-existent or begins with
       // a dash then we are going to eventually find the newest recovery file to use
       if (!(recover_following_arg.empty() || (recover_following_arg.find('-') == 0)))
-        _recover_base = recover_following_arg;
+        _restart_recover_base = recover_following_arg;
     }
 
     // Optionally get command line argument following --recoversuffix
@@ -777,7 +784,7 @@ MooseApp::setupOptions()
     // recovery and restart files.
     if (isParamValid("recoversuffix"))
     {
-      _recover_suffix = getParam<std::string>("recoversuffix");
+      _restart_recover_suffix = getParam<std::string>("recoversuffix");
     }
 
     _parser.parse(_input_filename);
@@ -796,14 +803,35 @@ MooseApp::setupOptions()
       _action_warehouse.setFinalTask("split_mesh");
     }
     _action_warehouse.build();
+
+    // Setup the AppFileBase for use by the Outputs or other systems that need output file info
+    {
+      // Extract the CommonOutputAction
+      const auto & common_actions = _action_warehouse.getActionListByName("common_output");
+      mooseAssert(common_actions.size() == 1, "Should be only one common_output Action");
+
+      const Action * common = *common_actions.begin();
+
+      // If file_base is set in CommonOutputAction through parsing input, obtain the file_base
+      if (common->isParamValid("file_base"))
+      {
+        _output_file_base = common->getParamTempl<std::string>("file_base");
+        _file_base_set_by_user = true;
+      }
+      else if (isUltimateMaster())
+      {
+        // if this app is a master, we use the input file name as the default file base
+        std::string base = getInputFileName();
+        size_t pos = base.find_last_of('.');
+        _output_file_base = base.substr(0, pos);
+        // Note: we did not append "_out" in the file base here because we do not want to
+        //       have it in betwen the input file name and the object name for Output/*
+        //       syntax.
+      }
+      // default file base for multiapps is set by MultiApp
+    }
   }
-  else if (getParam<bool>("apptype"))
-  {
-    Moose::perf_log.disable_logging();
-    Moose::out << "MooseApp Type: " << type() << std::endl;
-    _ready_to_exit = true;
-  }
-  else
+  else /* The catch-all case for bad options or missing options, etc. */
   {
     Moose::perf_log.disable_logging();
 
@@ -817,15 +845,18 @@ MooseApp::setupOptions()
 }
 
 void
-MooseApp::setInputFileName(std::string input_filename)
+MooseApp::setInputFileName(const std::string & input_filename)
 {
   _input_filename = input_filename;
 }
 
 std::string
-MooseApp::getOutputFileBase() const
+MooseApp::getOutputFileBase(bool for_non_moose_build_output) const
 {
-  return _output_file_base;
+  if (_file_base_set_by_user || for_non_moose_build_output || _multiapp_level)
+    return _output_file_base;
+  else
+    return _output_file_base + "_out";
 }
 
 void
@@ -916,15 +947,32 @@ MooseApp::isUseSplit() const
 }
 
 bool
-MooseApp::hasRecoverFileBase()
+MooseApp::hasRestartRecoverFileBase() const
 {
-  return !_recover_base.empty();
+  return !_restart_recover_base.empty();
+}
+
+bool
+MooseApp::hasRecoverFileBase() const
+{
+  mooseDeprecated("MooseApp::hasRecoverFileBase is deprecated, use "
+                  "MooseApp::hasRestartRecoverFileBase() instead.");
+  return !_restart_recover_base.empty();
 }
 
 void
-MooseApp::registerRecoverableData(std::string name)
+MooseApp::registerRestartableNameWithFilter(const std::string & name,
+                                            Moose::RESTARTABLE_FILTER filter)
 {
-  _recoverable_data.insert(name);
+  using Moose::RESTARTABLE_FILTER;
+  switch (filter)
+  {
+    case RESTARTABLE_FILTER::RECOVERABLE:
+      _recoverable_data_names.insert(name);
+      break;
+    default:
+      mooseError("Unknown filter");
+  }
 }
 
 std::shared_ptr<Backup>
@@ -1006,7 +1054,7 @@ MooseApp::run()
 }
 
 void
-MooseApp::setOutputPosition(Point p)
+MooseApp::setOutputPosition(const Point & p)
 {
   _output_position_set = true;
   _output_position = p;
@@ -1022,24 +1070,10 @@ MooseApp::getCheckpointDirectories() const
   // Storage for the directory names
   std::list<std::string> checkpoint_dirs;
 
-  // Extract the CommonOutputAction
-  const auto & common_actions = _action_warehouse.getActionListByName("common_output");
-  mooseAssert(common_actions.size() == 1, "Should be only one common_output Action");
+  // Add the directories added with Outputs/checkpoint=true input syntax
+  checkpoint_dirs.push_back(getOutputFileBase() + "_cp");
 
-  const Action * common = *common_actions.begin();
-
-  // If file_base is set in CommonOutputAction, add this file to the list of potential checkpoint
-  // files
-  if (common->isParamValid("file_base"))
-    checkpoint_dirs.push_back(common->getParamTempl<std::string>("file_base") + "_cp");
-  // Case for normal application or master in a Multiapp setting
-  else if (getOutputFileBase().empty())
-    checkpoint_dirs.push_back(FileOutput::getOutputFileBase(*this, "_out_cp"));
-  // Case for a sub app in a Multiapp setting
-  else
-    checkpoint_dirs.push_back(getOutputFileBase() + "_cp");
-
-  // Add the directories from any existing checkpoint objects
+  // Add the directories from any existing checkpoint output objects
   const auto & actions = _action_warehouse.getActionListByName("add_output");
   for (const auto & action : actions)
   {
@@ -1049,19 +1083,8 @@ MooseApp::getCheckpointDirectories() const
       continue;
 
     const InputParameters & params = moose_object_action->getObjectParams();
-
-    // Loop through the actions and add the necessary directories to the list to check
     if (moose_object_action->getParamTempl<std::string>("type") == "Checkpoint")
-    {
-      if (params.isParamValid("file_base"))
-        checkpoint_dirs.push_back(params.get<std::string>("file_base") + "_cp");
-      else
-      {
-        std::ostringstream oss;
-        oss << "_" << action->name() << "_cp";
-        checkpoint_dirs.push_back(FileOutput::getOutputFileBase(*this, oss.str()));
-      }
-    }
+      checkpoint_dirs.push_back(params.get<std::string>("file_base") + "_cp");
   }
 
   return checkpoint_dirs;
@@ -1075,7 +1098,7 @@ MooseApp::getCheckpointFiles() const
 }
 
 void
-MooseApp::setStartTime(const Real time)
+MooseApp::setStartTime(Real time)
 {
   _start_time_set = true;
   _start_time = time;
@@ -1121,16 +1144,36 @@ MooseApp::libNameToAppName(const std::string & library_name) const
   return MooseUtils::underscoreToCamelCase(app_name, true);
 }
 
-void
-MooseApp::registerRestartableData(std::string name,
+RestartableDataValue &
+MooseApp::registerRestartableData(const std::string & name,
                                   std::unique_ptr<RestartableDataValue> data,
-                                  THREAD_ID tid)
+                                  THREAD_ID tid,
+                                  bool mesh_meta_data,
+                                  bool read_only)
 {
-  auto & restartable_data = _restartable_data[tid];
-  auto insert_pair = moose_try_emplace(restartable_data, name, std::move(data));
+  // Select the data store for saving this piece of restartable data (mesh or everything else)
+  auto & data_ref = mesh_meta_data ? _mesh_meta_data_map : _restartable_data[tid];
 
+  auto insert_pair = data_ref.emplace(name, RestartableDataValuePair(std::move(data), !read_only));
+
+  // Does the storage for this data already exist?
   if (!insert_pair.second)
-    mooseError("Attempted to declare restartable twice with the same name: ", name);
+  {
+    auto & data = insert_pair.first->second;
+
+    // Are we really declaring or just trying to get a reference to the data?
+    if (!read_only)
+    {
+      if (data.declared)
+        mooseError("Attempted to declare restartable mesh meta data twice with the same name: ",
+                   name);
+      else
+        // The data wasn't previously declared, but now it is!
+        data.declared = true;
+    }
+  }
+
+  return *insert_pair.first->second.value;
 }
 
 void
@@ -1669,7 +1712,7 @@ MooseApp::getMeshGeneratorMesh(bool check_unique)
 }
 
 void
-MooseApp::setRestart(const bool & value)
+MooseApp::setRestart(bool value)
 {
   _restart = value;
 
@@ -1677,7 +1720,7 @@ MooseApp::setRestart(const bool & value)
 }
 
 void
-MooseApp::setRecover(const bool & value)
+MooseApp::setRecover(bool value)
 {
   _recover = value;
 }
@@ -1999,4 +2042,24 @@ MooseApp::meshReinitForRMs()
 {
   for (auto & rm : _relationship_managers)
     rm->mesh_reinit();
+}
+
+void
+MooseApp::checkMeshMetaDataIntegrity() const
+{
+  std::vector<std::string> not_declared;
+
+  for (const auto & pair : _mesh_meta_data_map)
+    if (!pair.second.declared)
+      not_declared.push_back(pair.first);
+
+  if (!not_declared.empty())
+  {
+    std::ostringstream oss;
+    std::copy(
+        not_declared.begin(), not_declared.end(), infix_ostream_iterator<std::string>(oss, ", "));
+
+    mooseError("The following Mesh meta-data properties were retrieved but never declared: ",
+               oss.str());
+  }
 }

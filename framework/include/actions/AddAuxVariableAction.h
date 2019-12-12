@@ -27,6 +27,8 @@ public:
   /**
    * Class constructor
    */
+  static InputParameters validParams();
+
   AddAuxVariableAction(InputParameters params);
 
   /**

@@ -23,6 +23,8 @@ InputParameters validParams<ReferenceResidualProblem>();
 class ReferenceResidualProblem : public FEProblem
 {
 public:
+  static InputParameters validParams();
+
   ReferenceResidualProblem(const InputParameters & params);
   virtual ~ReferenceResidualProblem();
 
@@ -36,18 +38,31 @@ public:
                             const Real snorm,
                             const Real fnorm,
                             const Real rtol,
+                            const Real divtol,
                             const Real stol,
                             const Real abstol,
                             const PetscInt nfuncs,
                             const PetscInt max_funcs,
                             const PetscBool force_iteration,
-                            const Real ref_resid,
+                            const Real initial_residual_before_preset_bcs,
                             const Real div_threshold) override;
 
+  /**
+   * Check the convergence by comparing the norm of each variable separately against
+   * its reference variable's norm. Only consider the solution converged if all
+   * variables are converged individually using either a relative or absolute
+   * criterion.
+   * @param fnorm Function norm (norm of full residual vector)
+   * @param abstol Absolute convergence tolerance
+   * @param rtol Relative convergence tolerance
+   * @param initial_residual_before_preset_bcs Initial norm of full residual vector
+   *                                           before applying preset bcs
+   * @return true if all variables are converged
+   */
   bool checkConvergenceIndividVars(const Real fnorm,
                                    const Real abstol,
                                    const Real rtol,
-                                   const Real ref_resid);
+                                   const Real initial_residual_before_preset_bcs);
 
   /**
    * Add solution variables to ReferenceResidualProblem.

@@ -30,6 +30,8 @@ InputParameters validParams<Exodus>();
 class Exodus : public OversampleOutput
 {
 public:
+  static InputParameters validParams();
+
   enum class OutputDimension : int
   {
     DEFAULT,
@@ -46,7 +48,7 @@ public:
 
   /**
    * Overload the OutputBase::output method, this is required for ExodusII
-   * output due to the method utilized for outputing single/global parameters
+   * output due to the method utilized for outputting single/global parameters
    */
   virtual void output(const ExecFlagType & type) override;
 

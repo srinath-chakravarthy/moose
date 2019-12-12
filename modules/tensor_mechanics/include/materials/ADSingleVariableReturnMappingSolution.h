@@ -24,7 +24,8 @@
   using ADSingleVariableReturnMappingSolution<compute_stage>::outputIterationSummary;              \
   using ADSingleVariableReturnMappingSolution<compute_stage>::_check_range;                        \
   using ADSingleVariableReturnMappingSolution<compute_stage>::_line_search;                        \
-  using ADSingleVariableReturnMappingSolution<compute_stage>::_bracket_solution
+  using ADSingleVariableReturnMappingSolution<compute_stage>::_bracket_solution;                   \
+  using ADSingleVariableReturnMappingSolution<compute_stage>::converged
 
 // Forward declarations
 template <ComputeStage>
@@ -41,6 +42,8 @@ template <ComputeStage compute_stage>
 class ADSingleVariableReturnMappingSolution
 {
 public:
+  static InputParameters validParams();
+
   ADSingleVariableReturnMappingSolution(const InputParameters & parameters);
   virtual ~ADSingleVariableReturnMappingSolution() {}
 
@@ -141,6 +144,14 @@ protected:
                                    const ADReal & scalar,
                                    const Real reference_residual);
 
+  /**
+   * Check to see whether the residual is within the convergence limits.
+   * @param residual  Current value of the residual
+   * @param reference Current value of the reference quantity
+   * @return Whether the model converged
+   */
+  bool converged(const ADReal & residual, const Real reference);
+
 private:
   enum class InternalSolveOutput
   {
@@ -199,14 +210,6 @@ private:
   SolveState internalSolve(const ADReal effective_trial_stress,
                            ADReal & scalar,
                            std::stringstream * iter_output = nullptr);
-
-  /**
-   * Check to see whether the residual is within the convergence limits.
-   * @param residual  Current value of the residual
-   * @param reference Current value of the reference quantity
-   * @return Whether the model converged
-   */
-  bool converged(const ADReal & residual, const Real reference);
 
   /**
    * Check to see whether the residual is within acceptable convergence limits.

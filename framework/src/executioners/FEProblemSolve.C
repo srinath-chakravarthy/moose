@@ -12,9 +12,10 @@
 #include "FEProblem.h"
 #include "NonlinearSystemBase.h"
 
-template <>
+defineLegacyParams(FEProblemSolve);
+
 InputParameters
-validParams<FEProblemSolve>()
+FEProblemSolve::validParams()
 {
   InputParameters params = emptyInputParameters();
 
@@ -53,14 +54,13 @@ validParams<FEProblemSolve>()
   params += Moose::PetscSupport::getPetscValidParams();
 #endif // LIBMESH_HAVE_PETSC
   params.addParam<Real>("l_tol", 1.0e-5, "Linear Tolerance");
-  params.addDeprecatedParam<Real>(
-      "l_abs_step_tol", -1, "Linear Absolute Step Tolerance", "Please use l_abs_tol instead");
   params.addParam<Real>("l_abs_tol", 1.0e-50, "Linear Absolute Tolerance");
   params.addParam<unsigned int>("l_max_its", 10000, "Max Linear Iterations");
   params.addParam<unsigned int>("nl_max_its", 50, "Max Nonlinear Iterations");
   params.addParam<unsigned int>("nl_max_funcs", 10000, "Max Nonlinear solver function evaluations");
   params.addParam<Real>("nl_abs_tol", 1.0e-50, "Nonlinear Absolute Tolerance");
   params.addParam<Real>("nl_rel_tol", 1.0e-8, "Nonlinear Relative Tolerance");
+  params.addParam<Real>("nl_div_tol", -1, "Nonlinear Divergence Tolerance");
   params.addParam<Real>("nl_abs_step_tol", 1.0e-50, "Nonlinear Absolute step Tolerance");
   params.addParam<Real>("nl_rel_step_tol", 1.0e-50, "Nonlinear Relative step Tolerance");
   params.addParam<bool>(
@@ -82,8 +82,8 @@ validParams<FEProblemSolve>()
       "will be computed during an extra Jacobian evaluation at the beginning of every time step.");
   params.addParam<bool>("verbose", false, "Set to true to print additional information");
 
-  params.addParamNamesToGroup("l_tol l_abs_tol l_abs_step_tol l_max_its nl_max_its nl_max_funcs "
-                              "nl_abs_tol nl_rel_tol nl_abs_step_tol nl_rel_step_tol "
+  params.addParamNamesToGroup("l_tol l_abs_tol l_max_its nl_max_its nl_max_funcs "
+                              "nl_abs_tol nl_rel_tol nl_div_tol nl_abs_step_tol nl_rel_step_tol "
                               "snesmf_reuse_base compute_initial_residual_before_preset_bcs",
                               "Solver");
   return params;
@@ -119,6 +119,8 @@ FEProblemSolve::FEProblemSolve(Executioner * ex)
 
   es.parameters.set<Real>("nonlinear solver relative residual tolerance") =
       getParam<Real>("nl_rel_tol");
+
+  es.parameters.set<Real>("nonlinear solver divergence tolerance") = getParam<Real>("nl_div_tol");
 
   es.parameters.set<Real>("nonlinear solver absolute step tolerance") =
       getParam<Real>("nl_abs_step_tol");

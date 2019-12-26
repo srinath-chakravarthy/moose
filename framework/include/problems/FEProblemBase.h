@@ -171,7 +171,7 @@ public:
   // DEPRECATED METHOD
   void setCouplingMatrix(CouplingMatrix * cm);
 
-  const CouplingMatrix * couplingMatrix() { return _cm.get(); }
+  const CouplingMatrix * couplingMatrix() const override { return _cm.get(); }
 
   /// Set custom coupling matrix for variables requiring nonlocal contribution
   void setNonlocalCouplingMatrix();
@@ -541,7 +541,7 @@ public:
   /**
    * getter for the MOOSE line search
    */
-  std::shared_ptr<LineSearch> getLineSearch() { return _line_search; }
+  LineSearch * getLineSearch() override { return _line_search.get(); }
 
   /**
    * The following functions will enable MOOSE to have the capability to import distributions
@@ -1736,6 +1736,20 @@ public:
    */
   virtual bool hasMortarCoupling() const { return _has_mortar; }
 
+  using SubProblem::computingNonlinearResid;
+  void computingNonlinearResid(bool computing_nonlinear_residual) override;
+
+  /**
+   * Set the number of steps in a grid sequences
+   */
+  void numGridSteps(unsigned int num_grid_steps) { _num_grid_steps = num_grid_steps; }
+
+  /**
+   * uniformly refine the problem mesh(es). This will also prolong the the solution, and in order
+   * for that to be safe, we can only perform one refinement at a time
+   */
+  void uniformRefine();
+
 protected:
   /// Create extra tagged vectors and matrices
   void createTagVectors();
@@ -2094,6 +2108,9 @@ private:
 
   /// Whether the simulation requires mortar coupling
   bool _has_mortar;
+
+  /// Number of steps in a grid sequence
+  unsigned int _num_grid_steps;
 };
 
 template <typename T>

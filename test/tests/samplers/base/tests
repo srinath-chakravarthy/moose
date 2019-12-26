@@ -2,12 +2,16 @@
   design = 'Sampler.md'
   issues = '#13906'
 
+  # Running these tests in recover is not valid because they are all Steady, but the executable
+  # still writes a recovery file. Thus, all the RunApp tests are marked with recover=false.
+
   [parallel]
     requirement = "The system shall include a random number sampling system that operates in "
                   "parallel"
     [threads]
       type = RunApp
       input = threads.i
+      recover = false
       min_threads = 2
       allow_test_objects = true
       detail = "with threads,"
@@ -15,6 +19,7 @@
     [mpi]
       type = RunApp
       input = mpi.i
+      recover = false
       min_parallel = 2
       allow_test_objects = true
       detail = " MPI, and"
@@ -23,8 +28,9 @@
     [iter]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       allow_test_objects = true
-      cli_args = 'Samplers/sample/use_rand=true UserObjects/test/test_type=rand_global_vs_next'
+      cli_args = 'Samplers/sample/use_rand=true Postprocessors/test/test_type=rand_global_vs_next'
       max_parallel = 1 # by design, see SamplerTester
 
       detail = "that operates with a row-based iteration scheme."
@@ -38,6 +44,7 @@
     [base_1rank]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       min_parallel = 1
       max_parallel = 1
       allow_test_objects = true
@@ -46,6 +53,7 @@
     [base_2rank]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       min_parallel = 2
       max_parallel = 2
       allow_test_objects = true
@@ -54,6 +62,7 @@
     [base_3rank]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       min_parallel = 3
       max_parallel = 3
       allow_test_objects = true
@@ -62,28 +71,31 @@
     [rand_1rank]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       min_parallel = 1
       max_parallel = 1
       allow_test_objects = true
-      cli_args = 'Samplers/sample/use_rand=true UserObjects/test/test_type=RAND_GLOBAL_VS_LOCAL'
+      cli_args = 'Samplers/sample/use_rand=true Postprocessors/test/test_type=RAND_GLOBAL_VS_LOCAL'
       detail = "on a one processor with random numbers,"
     []
     [rand_2rank]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       min_parallel = 2
       max_parallel = 2
       allow_test_objects = true
-      cli_args = 'Samplers/sample/use_rand=true UserObjects/test/test_type=RAND_GLOBAL_VS_LOCAL'
+      cli_args = 'Samplers/sample/use_rand=true Postprocessors/test/test_type=RAND_GLOBAL_VS_LOCAL'
       detail = "on two processor with random numbers, and"
     []
     [rand_3rank]
       type = RunApp
       input = global_vs_local.i
+      recover = false
       min_parallel = 3
       max_parallel = 3
       allow_test_objects = true
-      cli_args = 'Samplers/sample/use_rand=true UserObjects/test/test_type=RAND_GLOBAL_VS_LOCAL'
+      cli_args = 'Samplers/sample/use_rand=true Postprocessors/test/test_type=RAND_GLOBAL_VS_LOCAL'
       detail = "on thre processor with random numbers."
     []
   []
@@ -151,7 +163,7 @@
       input = errors.i
       max_parallel = 1 # the number of local samples changes with number of cores
       expect_err = "The number of entries in the DenseMatrix \([0-9]+\) exceeds the allowed limit of [0-9]+."
-      cli_args = "Samplers/sample/num_cols=1000000000 UserObjects/test/test_type=getLocalSamples"
+      cli_args = "Samplers/sample/num_cols=1000000000 Postprocessors/test/test_type=getLocalSamples"
 
       detail = "if the number of entries in the local sample matrix exceeds the maximum allowed, and"
     []
@@ -159,7 +171,7 @@
       type = RunException
       input = errors.i
       expect_err = "The number of entries in the std::vector \([0-9]+\) exceeds the allowed limit of [0-9]+."
-      cli_args = "Samplers/sample/num_cols=1000000000 UserObjects/test/test_type=getNextLocalRow"
+      cli_args = "Samplers/sample/num_cols=1000000000 Postprocessors/test/test_type=getNextLocalRow"
 
       detail = "if the number of entries in the local sample matrix row exceeds the maximum allowed."
     []

@@ -55,9 +55,25 @@ MooseVecView(NumericVector<Number> & vector)
 }
 
 void
+MooseVecView(const NumericVector<Number> & vector)
+{
+  PetscVector<Number> & petsc_vec =
+      static_cast<PetscVector<Number> &>(const_cast<NumericVector<Number> &>(vector));
+  VecView(petsc_vec.vec(), 0);
+}
+
+void
 MooseMatView(SparseMatrix<Number> & mat)
 {
   PetscMatrix<Number> & petsc_mat = static_cast<PetscMatrix<Number> &>(mat);
+  MatView(petsc_mat.mat(), 0);
+}
+
+void
+MooseMatView(const SparseMatrix<Number> & mat)
+{
+  PetscMatrix<Number> & petsc_mat =
+      static_cast<PetscMatrix<Number> &>(const_cast<SparseMatrix<Number> &>(mat));
   MatView(petsc_mat.mat(), 0);
 }
 
@@ -290,10 +306,10 @@ addActionTypes(Syntax & syntax)
                            "(setup_variable_complete)"
                            "(setup_quadrature)"
                            "(add_function)"
-                           "(add_distribution)"
-                           "(add_sampler)"
                            "(add_periodic_bc)"
                            "(add_user_object)"
+                           "(add_distribution)"
+                           "(add_sampler)"
                            "(setup_function_complete)"
                            "(setup_adaptivity)"
                            "(set_adaptivity_options)"

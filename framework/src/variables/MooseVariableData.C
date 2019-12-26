@@ -95,7 +95,8 @@ MooseVariableData<OutputType>::MooseVariableData(const MooseVariableFE<OutputTyp
 {
   // FIXME: continuity of FE type seems equivalent with the definition of nodal variables.
   //        Continuity does not depend on the FE dimension, so we just pass in a valid dimension.
-  if (_fe_type.family == NEDELEC_ONE || _fe_type.family == LAGRANGE_VEC)
+  if (_fe_type.family == NEDELEC_ONE || _fe_type.family == LAGRANGE_VEC ||
+      _fe_type.family == MONOMIAL_VEC)
     _continuity = _assembly.getVectorFE(_fe_type, _sys.mesh().dimension())->get_continuity();
   else
     _continuity = _assembly.getFE(_fe_type, _sys.mesh().dimension())->get_continuity();
@@ -1390,13 +1391,9 @@ MooseVariableData<OutputType>::computeAD(const unsigned int num_dofs, const unsi
       }
 
       if (_need_ad_second_u)
-      {
-        if (_displaced)
-          mooseError("Support for second order shape function derivatives on the displaced mesh "
-                     "has not been added yet!");
-        else
-          _ad_second_u[qp] += _ad_dof_values[i] * (*_current_second_phi)[i][qp];
-      }
+        // Note that this will not carry any derivatives with respect to displacements because those
+        // calculations have not yet been implemented in Assembly
+        _ad_second_u[qp] += _ad_dof_values[i] * (*_current_second_phi)[i][qp];
 
       if (_need_ad_u_dot && _time_integrator)
         _ad_u_dot[qp] += (*_current_phi)[i][qp] * _ad_dofs_dot[i];

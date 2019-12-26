@@ -141,6 +141,7 @@ initLineSearchType()
     line_search_type_to_enum["BT"] = LS_BT;
     line_search_type_to_enum["CP"] = LS_CP;
     line_search_type_to_enum["CONTACT"] = LS_CONTACT;
+    line_search_type_to_enum["PROJECT"] = LS_PROJECT;
 #endif
 #endif
   }
@@ -415,6 +416,8 @@ stringify(FEFamily f)
       return "LAGRANGE_VEC";
     case 42:
       return "NEDELEC_ONE";
+    case 43:
+      return "MONOMIAL_VEC";
     case 99:
       return "INVALID_FE";
     default:

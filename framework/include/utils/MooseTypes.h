@@ -541,6 +541,7 @@ typedef VectorVariableTestSecond ADVectorVariableTestSecond;
 
 namespace Moose
 {
+extern const processor_id_type INVALID_PROCESSOR_ID;
 extern const SubdomainID ANY_BLOCK_ID;
 extern const SubdomainID INVALID_BLOCK_ID;
 extern const BoundaryID ANY_BOUNDARY_ID;
@@ -790,6 +791,7 @@ enum LineSearchType
 #else
   LS_SHELL,
   LS_CONTACT,
+  LS_PROJECT,
   LS_L2,
   LS_BT,
   LS_CP

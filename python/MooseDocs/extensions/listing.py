@@ -1,4 +1,3 @@
-#pylint: disable=missing-docstring
 #* This file is part of the MOOSE framework
 #* https://www.mooseframework.org
 #*
@@ -9,15 +8,15 @@
 #* https://www.gnu.org/licenses/lgpl-2.1.html
 
 import os
-
+import pyhit
+import moosetree
 import mooseutils
-
 import MooseDocs
-from MooseDocs.base import LatexRenderer
-from MooseDocs import common
-from MooseDocs.common import exceptions
-from MooseDocs.extensions import core, command, floats
-from MooseDocs.tree import tokens, latex
+from .. import common
+from ..common import exceptions
+from ..base import LatexRenderer
+from ..tree import tokens, latex
+from . import core, command, floats
 
 Listing = tokens.newToken('Listing', floats.Float)
 ListingCode = tokens.newToken('ListingCode', core.Code)
@@ -171,9 +170,10 @@ class InputListingCommand(FileListingCommand):
 
     def extractContent(self, filename):
         """Extract the file contents for display."""
-        content = common.read(filename)
         if self.settings['block']:
-            content = self.extractInputBlocks(content, self.settings['block'])
+            content = self.extractInputBlocks(filename, self.settings['block'])
+        else:
+            content = common.read(filename)
 
         content, _ = common.extractContent(content, self.settings)
         return content
@@ -181,10 +181,10 @@ class InputListingCommand(FileListingCommand):
     @staticmethod
     def extractInputBlocks(filename, blocks):
         """Remove input file block(s)"""
-        hit = mooseutils.hit_load(filename)
+        hit = pyhit.load(filename)
         out = []
         for block in blocks.split(' '):
-            node = hit.find(block)
+            node = moosetree.find(hit, lambda n: n.fullpath.endswith(block))
             if node is None:
                 msg = "Unable to find block '{}' in {}."
                 raise exceptions.MooseDocsException(msg, block, filename)

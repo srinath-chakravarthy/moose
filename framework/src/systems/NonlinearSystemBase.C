@@ -32,7 +32,7 @@
 #include "ComputeNodalKernelBCJacobiansThread.h"
 #include "TimeKernel.h"
 #include "BoundaryCondition.h"
-#include "PresetNodalBC.h"
+#include "DirichletBCBase.h"
 #include "NodalBCBase.h"
 #include "IntegratedBCBase.h"
 #include "DGKernel.h"
@@ -66,7 +66,7 @@
 #include "AllLocalDofIndicesThread.h"
 #include "FloatingPointExceptionGuard.h"
 #include "ADKernel.h"
-#include "ADPresetNodalBC.h"
+#include "ADDirichletBCBase.h"
 #include "Moose.h"
 #include "TimedPrint.h"
 #include "ConsoleStream.h"
@@ -168,10 +168,11 @@ NonlinearSystemBase::NonlinearSystemBase(FEProblemBase & fe_problem,
     _compute_jacobian_blocks_timer(registerTimedSection("computeJacobianBlocks", 3)),
     _compute_dampers_timer(registerTimedSection("computeDampers", 3)),
     _compute_dirac_timer(registerTimedSection("computeDirac", 3)),
-    _compute_scaling_jacobian_timer(registerTimedSection("computeScalingJacobian", 2)),
+    _compute_scaling_timer(registerTimedSection("computeScaling", 2)),
     _computed_scaling(false),
     _automatic_scaling(false),
-    _compute_scaling_once(true)
+    _compute_scaling_once(true),
+    _resid_vs_jac_scaling_param(0)
 #ifndef MOOSE_SPARSE_AD
     ,
     _required_derivative_size(0)
@@ -353,12 +354,12 @@ NonlinearSystemBase::timestepSetup()
     {
       if (!_computed_scaling)
       {
-        computeScalingJacobian();
+        computeScaling();
         _computed_scaling = true;
       }
     }
     else
-      computeScalingJacobian();
+      computeScaling();
   }
 }
 
@@ -489,15 +490,15 @@ NonlinearSystemBase::addBoundaryCondition(const std::string & bc_name,
     if (parameters.get<std::vector<AuxVariableName>>("diag_save_in").size() > 0)
       _has_nodalbc_diag_save_in = true;
 
-    // PresetNodalBC
-    std::shared_ptr<PresetNodalBC> pnbc = std::dynamic_pointer_cast<PresetNodalBC>(bc);
-    if (pnbc)
-      _preset_nodal_bcs.addObject(pnbc);
+    // DirichletBCs that are preset
+    std::shared_ptr<DirichletBCBase> dbc = std::dynamic_pointer_cast<DirichletBCBase>(bc);
+    if (dbc && dbc->preset())
+      _preset_nodal_bcs.addObject(dbc);
 
-    std::shared_ptr<ADPresetNodalBC<RESIDUAL>> adpnbc =
-        std::dynamic_pointer_cast<ADPresetNodalBC<RESIDUAL>>(bc);
-    if (adpnbc)
-      _ad_preset_nodal_bcs.addObject(adpnbc);
+    std::shared_ptr<ADDirichletBCBase<RESIDUAL>> addbc =
+        std::dynamic_pointer_cast<ADDirichletBCBase<RESIDUAL>>(bc);
+    if (addbc && addbc->preset())
+      _ad_preset_nodal_bcs.addObject(addbc);
   }
 
   // IntegratedBCBase
@@ -706,6 +707,10 @@ NonlinearSystemBase::computeResidualTags(const std::set<TagID> & tags)
         residual += *_Re_non_time;
       residual.close();
     }
+    if (_computing_scaling_residual)
+      // We don't want to do nodal bcs or anything else
+      return;
+
     computeNodalBCs(tags);
     closeTaggedVectors(tags);
 
@@ -1469,6 +1474,12 @@ NonlinearSystemBase::computeResidualInternal(const std::set<TagID> & tags)
     }
   }
   PARALLEL_CATCH;
+
+  if (_computing_scaling_residual)
+    // We computed the volumetric objects. We can return now (after assembling) before we get into
+    // any strongly enforced constraint conditions or penalty-type objects
+    // (DGKernels, IntegratedBCs, InterfaceKernels, Constraints)
+    return;
 
   // residual contributions from boundary NodalKernels
   PARALLEL_TRY
@@ -3214,7 +3225,7 @@ NonlinearSystemBase::mortarJacobianConstraints(bool displaced)
 }
 
 void
-NonlinearSystemBase::computeScalingJacobian()
+NonlinearSystemBase::computeScaling()
 {
   mooseWarning("The NonlinearSystemBase derived class that is being used does not currently "
                "support automatic scaling.");

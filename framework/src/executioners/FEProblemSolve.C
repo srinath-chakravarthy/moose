@@ -80,10 +80,11 @@ FEProblemSolve::validParams()
       "Specifies whether or not to reuse the base vector for matrix-free calculation");
   params.addParam<bool>(
       "skip_exception_check", false, "Specifies whether or not to skip exception check");
-  params.addParam<bool>("compute_initial_residual_before_preset_bcs",
-                        false,
-                        "Use the residual norm computed *before* PresetBCs are imposed in relative "
-                        "convergence check");
+  params.addParam<bool>(
+      "compute_initial_residual_before_preset_bcs",
+      false,
+      "Use the residual norm computed *before* preset BCs are imposed in relative "
+      "convergence check");
   params.addParam<bool>("automatic_scaling", "Whether to use automatic scaling for the variables.");
   params.addParam<bool>(
       "compute_scaling_once",
@@ -92,6 +93,13 @@ FEProblemSolve::validParams()
       "through an extra Jacobian evaluation. If this is set to false, then the scaling factors "
       "will be computed during an extra Jacobian evaluation at the beginning of every time step.");
   params.addParam<bool>("verbose", false, "Set to true to print additional information");
+  params.addRangeCheckedParam<Real>(
+      "resid_vs_jac_scaling_param",
+      0,
+      "0<=resid_vs_jac_scaling_param<=1",
+      "A parameter that indicates the weighting of the residual vs the Jacobian in determining "
+      "variable scaling parameters. A value of 1 indicates pure residual-based scaling. A value of "
+      "0 indicates pure Jacobian-based scaling");
   params.addRangeCheckedParam<unsigned int>(
       "num_grids",
       1,

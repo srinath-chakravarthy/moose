@@ -445,6 +445,9 @@ MooseVariableFE<OutputType>::getValue(const Elem * elem,
   OutputType value = 0;
   if (isNodal())
   {
+    mooseAssert(dof_indices.size() == phi.size(),
+                "The number of shapes does not match the number of dof indices on the elem");
+
     for (unsigned int i = 0; i < dof_indices.size(); ++i)
     {
       // The zero index is because we only have one point that the phis are evaluated at

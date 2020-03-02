@@ -12,8 +12,6 @@
 #include "MooseTypes.h"
 #include "Assembly.h"
 
-defineLegacyParams(InterfaceUserObject);
-
 InputParameters
 InterfaceUserObject::validParams()
 {
@@ -36,9 +34,7 @@ InterfaceUserObject::InterfaceUserObject(const InputParameters & parameters)
     TwoMaterialPropertyInterface(this, Moose::EMPTY_BLOCK_IDS, boundaryIDs()),
     NeighborCoupleable(this, false, false),
     MooseVariableDependencyInterface(),
-    UserObjectInterface(this),
     TransientInterface(this),
-    PostprocessorInterface(this),
     _mesh(_subproblem.mesh()),
     _q_point(_assembly.qPointsFace()),
     _qrule(_assembly.qRuleFace()),

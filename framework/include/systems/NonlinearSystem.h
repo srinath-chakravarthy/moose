@@ -87,6 +87,11 @@ protected:
 
 private:
   /**
+   * Setup group scaling containers
+   */
+  void setupScalingGrouping();
+
+  /**
    * Form preconditioning matrix via a standard finite difference method
    * column-by-column. This method computes both diagonal and off-diagonal
    * entrices regardless of the structure pattern of the Jacobian matrix.
@@ -106,4 +111,13 @@ private:
   void setupColoringFiniteDifferencedPreconditioner();
 
   bool _use_coloring_finite_difference;
+
+  /// Whether we've initialized the automatic scaling data structures
+  bool _auto_scaling_initd;
+
+  /// A map from variable index to group variable index and it's associated (inverse) scaling factor
+  std::unordered_map<unsigned int, unsigned int> _var_to_group_var;
+
+  /// The number of scaling groups
+  std::size_t _num_scaling_groups;
 };

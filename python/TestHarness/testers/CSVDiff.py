@@ -23,6 +23,7 @@ class CSVDiff(FileTester):
         params.addParam('comparison_file', "Use supplied custom comparison config file.")
         params.addParam('rel_err', "A customized relative error tolerances.")
         params.addParam('abs_zero', "A customized relative error tolerances.")
+
         return params
 
     def __init__(self, name, params):
@@ -77,7 +78,7 @@ class CSVDiff(FileTester):
         return commands
 
     def processResults(self, moose_dir, options, output):
-        FileTester.processResults(self, moose_dir, options, output)
+        output += FileTester.processResults(self, moose_dir, options, output)
 
         if self.isFail() or self.specs['skip_checks']:
             return output

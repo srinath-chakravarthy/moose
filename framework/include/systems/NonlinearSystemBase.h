@@ -58,9 +58,7 @@ class SparseMatrix;
  *
  * It is a part of FEProblemBase ;-)
  */
-class NonlinearSystemBase : public SystemBase,
-                            public ConsoleStreamInterface,
-                            public PerfGraphInterface
+class NonlinearSystemBase : public SystemBase, public PerfGraphInterface
 {
 public:
   NonlinearSystemBase(FEProblemBase & problem, System & sys, const std::string & name);
@@ -638,15 +636,6 @@ public:
 
   virtual TagID systemMatrixTag() override { return _Ke_system_tag; }
 
-  /**
-   * Sets the verbose flag
-   * @param[in] verbose   Verbose flag
-   */
-  void setVerboseFlag(const bool & verbose) { _verbose = verbose; }
-
-  bool automaticScaling() const { return _automatic_scaling; }
-  void automaticScaling(bool automatic_scaling) { _automatic_scaling = automatic_scaling; }
-
   bool computeScalingOnce() const { return _compute_scaling_once; }
   void computeScalingOnce(bool compute_scaling_once)
   {
@@ -661,6 +650,11 @@ public:
   void autoScalingParam(Real resid_vs_jac_scaling_param)
   {
     _resid_vs_jac_scaling_param = resid_vs_jac_scaling_param;
+  }
+
+  void scalingGroupVariables(const std::vector<std::vector<std::string>> & scaling_group_variables)
+  {
+    _scaling_group_variables = scaling_group_variables;
   }
 
 #ifndef MOOSE_SPARSE_AD
@@ -735,9 +729,6 @@ protected:
   void mortarJacobianConstraints(bool displaced);
 
 protected:
-  /// True if printing out additional information
-  bool _verbose;
-
   /// solution vector from nonlinear solver
   const NumericVector<Number> * _current_solution;
   /// ghosted form of the residual
@@ -923,9 +914,6 @@ protected:
   /// Flag used to indicate whether we have already computed the scaling Jacobian
   bool _computed_scaling;
 
-  /// Whether to automatically scale the variables
-  bool _automatic_scaling;
-
   /// Whether the scaling factors should only be computed once at the beginning of the simulation
   /// through an extra Jacobian evaluation. If this is set to false, then the scaling factors will
   /// be computed during an extra Jacobian evaluation at the beginning of every time step.
@@ -935,6 +923,11 @@ protected:
   /// variable scaling parameters. A value of 1 indicates pure residual-based scaling. A value of 0
   /// indicates pure Jacobian-based scaling
   Real _resid_vs_jac_scaling_param;
+
+  /// A container of variable groupings that can be used in scaling calculations. This can be useful
+  /// for simulations in which vector-like variables are split into invidual scalar-field components
+  /// like for solid/fluid mechanics
+  std::vector<std::vector<std::string>> _scaling_group_variables;
 
 private:
   /// Functors for computing residuals from undisplaced mortar constraints

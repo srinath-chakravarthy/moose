@@ -2166,6 +2166,15 @@ FEProblemBase::addADKernel(const std::string & kernel_name,
   addKernel(kernel_name + "<RESIDUAL>", name + "_residual", parameters);
   addKernel(kernel_name + "<JACOBIAN>", name + "_jacobian", parameters);
   haveADObjects(true);
+
+  // alias parameters of the two instances to the name without the suffix
+  const std::string & base = parameters.get<std::string>("_moose_base");
+  MooseObjectName the_name(base, name);
+  MooseObjectName res_name(base, name + "_residual");
+  MooseObjectName jac_name(base, name + "_jacobian");
+
+  _app.getInputParameterWarehouse().addControllableObjectAlias(the_name, res_name);
+  _app.getInputParameterWarehouse().addControllableObjectAlias(the_name, jac_name);
 }
 
 void
@@ -2257,6 +2266,28 @@ FEProblemBase::addBoundaryCondition(const std::string & bc_name,
   }
 
   _nl->addBoundaryCondition(bc_name, name, parameters);
+}
+
+void
+FEProblemBase::addADBoundaryCondition(const std::string & bc_name,
+                                      const std::string & name,
+                                      InputParameters & parameters)
+{
+  addBoundaryCondition(bc_name + "<RESIDUAL>", name + "_residual", parameters);
+  addBoundaryCondition(bc_name + "<JACOBIAN>", name + "_jacobian", parameters);
+  haveADObjects(true);
+
+  // alias parameters of the two instances to the name without the suffix
+  std::vector<std::string> prefix = {parameters.get<std::string>("_moose_base"), "BCs"};
+  for (const auto & base : prefix)
+  {
+    MooseObjectParameterName the_name(MooseObjectName(base, name), "*");
+    MooseObjectParameterName res_name(MooseObjectName(base, name + "_residual"), "*");
+    MooseObjectParameterName jac_name(MooseObjectName(base, name + "_jacobian"), "*");
+
+    _app.getInputParameterWarehouse().addControllableObjectAlias(the_name, res_name);
+    _app.getInputParameterWarehouse().addControllableObjectAlias(the_name, jac_name);
+  }
 }
 
 void
@@ -2876,10 +2907,10 @@ FEProblemBase::addMaterialHelper(std::vector<MaterialWarehouse *> warehouses,
           warehouse->addObjects(material, neighbor_material, face_material, tid);
 
       // link parameters of face and neighbor materials
-      MooseObjectParameterName name(MooseObjectName("Material", material->name()), "*");
-      MooseObjectParameterName face_name(MooseObjectName("Material", face_material->name()), "*");
-      MooseObjectParameterName neighbor_name(MooseObjectName("Material", neighbor_material->name()),
-                                             "*");
+      const std::string & base = parameters.get<std::string>("_moose_base");
+      MooseObjectParameterName name(MooseObjectName(base, material->name()), "*");
+      MooseObjectParameterName face_name(MooseObjectName(base, face_material->name()), "*");
+      MooseObjectParameterName neighbor_name(MooseObjectName(base, neighbor_material->name()), "*");
 
       _app.getInputParameterWarehouse().addControllableParameterConnection(name, face_name, false);
       _app.getInputParameterWarehouse().addControllableParameterConnection(
@@ -3306,9 +3337,11 @@ VectorPostprocessorValue &
 FEProblemBase::declareVectorPostprocessorVector(const VectorPostprocessorName & name,
                                                 const std::string & vector_name,
                                                 bool contains_complete_history,
-                                                bool is_broadcast)
+                                                bool is_broadcast,
+                                                bool is_distributed)
 {
-  return _vpps_data.declareVector(name, vector_name, contains_complete_history, is_broadcast);
+  return _vpps_data.declareVector(
+      name, vector_name, contains_complete_history, is_broadcast, is_distributed);
 }
 
 const std::vector<std::pair<std::string, VectorPostprocessorData::VectorPostprocessorState>> &
@@ -6091,7 +6124,13 @@ FEProblemBase::checkDependMaterialsHelper(
     if (!difference.empty())
     {
       std::ostringstream oss;
-      oss << "One or more Material Properties were not supplied on block " << it.first << ":\n";
+      oss << "One or more Material Properties were not supplied on block ";
+      const std::string & subdomain_name = _mesh.getSubdomainName(it.first);
+      if (subdomain_name.length() > 0)
+        oss << subdomain_name << " (" << it.first << ")";
+      else
+        oss << it.first;
+      oss << ":\n";
       for (const auto & name : difference)
         oss << name << "\n";
       mooseError(oss.str());
@@ -6349,7 +6388,23 @@ FEProblemBase::needBoundaryMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid)
 bool
 FEProblemBase::needInterfaceMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid)
 {
-  return _residual_interface_materials.hasActiveBoundaryObjects(bnd_id, tid);
+  if (_interface_mat_side_cache[tid].find(bnd_id) == _interface_mat_side_cache[tid].end())
+  {
+    _interface_mat_side_cache[tid][bnd_id] = false;
+
+    if (_nl->needInterfaceMaterialOnSide(bnd_id, tid))
+      _interface_mat_side_cache[tid][bnd_id] = true;
+    else if (theWarehouse()
+                 .query()
+                 .condition<AttribThread>(tid)
+                 .condition<AttribInterfaces>(Interfaces::InterfaceUserObject)
+                 .condition<AttribBoundaries>(bnd_id)
+                 .count() > 0)
+      _interface_mat_side_cache[tid][bnd_id] = true;
+    else if (_residual_interface_materials.hasActiveBoundaryObjects(bnd_id, tid))
+      _interface_mat_side_cache[tid][bnd_id] = true;
+  }
+  return _interface_mat_side_cache[tid][bnd_id];
 }
 
 bool
@@ -6519,4 +6574,13 @@ FEProblemBase::uniformRefine()
     Adaptivity::uniformRefine(&_displaced_problem->mesh(), 1);
 
   meshChangedHelper(/*intermediate_change=*/false);
+}
+
+void
+FEProblemBase::automaticScaling(bool automatic_scaling)
+{
+  if (_displaced_problem)
+    _displaced_problem->automaticScaling(automatic_scaling);
+
+  SubProblem::automaticScaling(automatic_scaling);
 }

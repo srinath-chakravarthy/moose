@@ -60,6 +60,7 @@ TensorMechanicsAction::validParams()
   params.addParam<std::vector<TagName>>(
       "extra_vector_tags",
       "The tag names for extra vectors that residual data should be saved into");
+  params.addParam<Real>("scaling", "The scaling to apply to the displacement variables");
 
   return params;
 }
@@ -150,6 +151,11 @@ TensorMechanicsAction::TensorMechanicsAction(const InputParameters & params)
   // Error if volumetric locking correction is true for 1D problems
   if (_ndisp == 1 && getParam<bool>("volumetric_locking_correction"))
     mooseError("Volumetric locking correction should be set to false for 1D problems.");
+
+  if (!getParam<bool>("add_variables") && params.isParamSetByUser("scaling"))
+    paramError("scaling",
+               "The scaling parameter has no effect unless add_variables is set to true. Did you "
+               "mean to set 'add_variables = true'?");
 }
 
 void
@@ -186,7 +192,7 @@ TensorMechanicsAction::act()
     if (_planar_formulation == PlanarFormulation::GeneralizedPlaneStrain)
     {
       if (_use_ad)
-        paramError("use_ad", "AD not setup for use with PlaneStrain");
+        paramError("use_automatic_differentiation", "AD not setup for use with PlaneStrain");
       // Set the action parameters
       const std::string type = "GeneralizedPlaneStrainAction";
       auto action_params = _action_factory.getValidParams(type);
@@ -217,6 +223,8 @@ TensorMechanicsAction::act()
 
     params.set<MooseEnum>("order") = second ? "SECOND" : "FIRST";
     params.set<MooseEnum>("family") = "LAGRANGE";
+    if (isParamValid("scaling"))
+      params.set<std::vector<Real>>("scaling") = {getParam<Real>("scaling")};
 
     // Loop through the displacement variables
     for (const auto & disp : _displacements)
@@ -265,10 +273,10 @@ TensorMechanicsAction::act()
              _planar_formulation == PlanarFormulation::PlaneStrain ||
              _planar_formulation == PlanarFormulation::GeneralizedPlaneStrain)
     {
-      if (_use_ad)
-        paramError(
-            "use_ad",
-            "AD not setup for use with WeakPlaneStress, PlaneStrain, or GeneralizedPlaneStrain");
+      if (_use_ad && (_planar_formulation == PlanarFormulation::PlaneStrain ||
+                      _planar_formulation == PlanarFormulation::GeneralizedPlaneStrain))
+        paramError("use_automatic_differentiation",
+                   "AD not setup for use with PlaneStrain or GeneralizedPlaneStrain");
 
       std::map<std::pair<Moose::CoordinateSystemType, StrainAndIncrement>, std::string> type_map = {
           {{Moose::COORD_XYZ, StrainAndIncrement::SmallTotal}, "ComputePlaneSmallStrain"},
@@ -370,10 +378,20 @@ TensorMechanicsAction::act()
 
     if (_planar_formulation == PlanarFormulation::WeakPlaneStress)
     {
-      auto params = getKernelParameters("WeakPlaneStress");
+      auto params = getKernelParameters(ad_prepend + "WeakPlaneStress" + ad_append);
       std::string wps_kernel_name = "TM_WPS_" + name();
       params.set<NonlinearVariableName>("variable") = getParam<VariableName>("out_of_plane_strain");
-      _problem->addKernel("WeakPlaneStress", wps_kernel_name, params);
+
+      if (_use_ad)
+      {
+        _problem->addKernel(
+            ad_prepend + "WeakPlaneStress" + "<RESIDUAL>", wps_kernel_name + "_residual", params);
+        _problem->addKernel(
+            ad_prepend + "WeakPlaneStress" + "<JACOBIAN>", wps_kernel_name + "_jacobian", params);
+        _problem->haveADObjects(true);
+      }
+      else
+        _problem->addKernel("WeakPlaneStress", wps_kernel_name, params);
     }
   }
 }
@@ -544,12 +562,9 @@ InputParameters
 TensorMechanicsAction::getKernelParameters(std::string type)
 {
   InputParameters params = _factory.getValidParams(type);
-  params.applyParameters(parameters(),
-                         {"displacements",
-                          "use_displaced_mesh",
-                          "save_in",
-                          "diag_save_in",
-                          "out_of_plane_strain"});
+  params.applyParameters(
+      parameters(),
+      {"displacements", "use_displaced_mesh", "save_in", "diag_save_in", "out_of_plane_strain"});
 
   params.set<std::vector<VariableName>>("displacements") = _coupled_displacements;
   params.set<bool>("use_displaced_mesh") = _use_displaced_mesh;

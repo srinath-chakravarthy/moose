@@ -2,7 +2,7 @@
 
 [Tests]
   design = 'Constraints/index.md'
-  issues = '#13080'
+  issues = '#13080 #14454'
   [frictionless-nodal-min-lm-mortar-disp-coarse]
     type = 'Exodiff'
     input = 'frictionless-nodal-min-lm-mortar-disp.i'
@@ -66,6 +66,7 @@
     cli_args = "Mesh/file=long-bottom-block-1elem-blocks-coarse.e Executioner/end_time=50 Postprocessors/active=''"
     max_parallel = 1
     allow_test_objects = true
+    abs_zero = 1e-9
   []
   [frictional-mortar-fb-lm-mortar-disp-coarse]
     type = 'Exodiff'
@@ -160,6 +161,7 @@
       type = 'Exodiff'
       input = 'bouncing-block-ranfs.i'
       exodiff = 'bouncing-block-coarse.e'
+      abs_zero = 1e-9
       detail = 'The system shall be able to solve a smaller model of the full ping-ponging problem'
       cli_args = "Postprocessors/active='' Mesh/file=long-bottom-block-no-lower-d-coarse.e Executioner/end_time=100 Outputs/file_base=bouncing-block-coarse"
     []

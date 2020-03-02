@@ -299,7 +299,7 @@ class TestHarness:
             self.keyboard_talk = False
             print('\nExiting due to keyboard interrupt...')
 
-   # Create and return list of tester objects. A tester is created by providing
+    # Create and return list of tester objects. A tester is created by providing
     # abspath to basename (dirpath), and the test file in queustion (file)
     def createTesters(self, dirpath, file, find_only, testroot_params={}):
         # Build a Parser to parse the objects
@@ -359,6 +359,7 @@ class TestHarness:
         relative_hitpath = os.path.join(*params['hit_path'].split(os.sep)[2:])  # Trim root node "[Tests]"
         formatted_name = relative_path + '.' + relative_hitpath
 
+        params['spec_file'] = filename
         params['test_name'] = formatted_name
         params['test_dir'] = test_dir
         params['relative_path'] = relative_path

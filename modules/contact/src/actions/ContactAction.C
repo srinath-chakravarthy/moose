@@ -24,7 +24,9 @@ registerMooseAction("ContactApp", ContactAction, "add_aux_variable");
 registerMooseAction("ContactApp", ContactAction, "add_constraint"); // for mortar constraint
 registerMooseAction("ContactApp", ContactAction, "add_dirac_kernel");
 registerMooseAction("ContactApp", ContactAction, "add_mesh_generator"); // for mortar subdomains
-registerMooseAction("ContactApp", ContactAction, "add_variable"); // for mortar lagrange multiplier
+registerMooseAction("ContactApp",
+                    ContactAction,
+                    "add_mortar_variable"); // for mortar lagrange multiplier
 registerMooseAction("ContactApp", ContactAction, "output_penetration_info_vars");
 
 template <>
@@ -85,6 +87,16 @@ validParams<ContactAction>()
       "c_normal", 1, "Parameter for balancing the size of the gap and contact pressure");
   params.addParam<Real>(
       "c_tangential", 1, "Parameter for balancing the contact pressure and velocity");
+  params.addParam<bool>(
+      "ping_pong_protection",
+      false,
+      "Whether to protect against ping-ponging, e.g. the oscillation of the slave node between two "
+      "different master faces, by tying the slave node to the "
+      "edge between the involved master faces");
+  params.addParam<Real>(
+      "normal_lm_scaling", 1., "Scaling factor to apply to the normal LM variable");
+  params.addParam<Real>(
+      "tangential_lm_scaling", 1., "Scaling factor to apply to the tangential LM variable");
 
   return params;
 }
@@ -96,7 +108,8 @@ ContactAction::ContactAction(const InputParameters & params)
     _model(getParam<MooseEnum>("model")),
     _formulation(getParam<MooseEnum>("formulation")),
     _system(getParam<MooseEnum>("system")),
-    _mesh_gen_name(getParam<MeshGeneratorName>("mesh"))
+    _mesh_gen_name(getParam<MeshGeneratorName>("mesh")),
+    _ping_pong_protection(getParam<bool>("ping_pong_protection"))
 {
 
   if (_formulation == "tangential_penalty")
@@ -130,6 +143,11 @@ ContactAction::ContactAction(const InputParameters & params)
         "The DiracKernel-based system for mechanical contact enforcement is deprecated, "
         "and will be removed on April 1, 2020. It is being replaced by the Constraint-based "
         "system, which is selected by setting 'system=Constraint'.\n");
+
+  if (_formulation != "ranfs")
+    if (_ping_pong_protection)
+      paramError("ping_pong_protection",
+                 "The 'ping_pong_protection' option can only be used with the 'ranfs' formulation");
 }
 
 void
@@ -209,12 +227,13 @@ ContactAction::addMortarContact()
     }
   }
 
-  if (_current_task == "add_variable")
+  if (_current_task == "add_mortar_variable")
   {
     // Add the lagrange multiplier on the slave subdomain.
     const auto addLagrangeMultiplier =
         [this, &slave_subdomain_name, &displacements](const std::string & variable_name,
-                                                      const int codimension) //
+                                                      const int codimension,
+                                                      const Real scaling_factor) //
     {
       InputParameters params = _factory.getValidParams("MooseVariableBase");
 
@@ -238,15 +257,17 @@ ContactAction::addMortarContact()
         mooseError("Primal variable type must be either MONOMIAL or LAGRANGE for mortar contact.");
 
       params.set<std::vector<SubdomainName>>("block") = {slave_subdomain_name};
+      params.set<std::vector<Real>>("scaling") = {scaling_factor};
       auto fe_type = AddVariableAction::feType(params);
       auto var_type = AddVariableAction::determineType(fe_type, 1);
       _problem->addVariable(var_type, variable_name, params);
     };
 
     // Set the family/order same as primal for normal contact and one order lower for tangential.
-    addLagrangeMultiplier(normal_lagrange_multiplier_name, 0);
+    addLagrangeMultiplier(normal_lagrange_multiplier_name, 0, getParam<Real>("normal_lm_scaling"));
     if (_model == "coulomb")
-      addLagrangeMultiplier(tangential_lagrange_multiplier_name, 1);
+      addLagrangeMultiplier(
+          tangential_lagrange_multiplier_name, 1, getParam<Real>("tangential_lm_scaling"));
   }
 
   if (_current_task == "add_constraint")
@@ -352,21 +373,37 @@ ContactAction::addNodeFaceContact()
   std::vector<VariableName> displacements = getDisplacementVarNames();
   const unsigned int ndisp = displacements.size();
 
-  InputParameters params = _factory.getValidParams("MechanicalContactConstraint");
+  std::string constraint_type;
+
+  if (_formulation == "ranfs")
+    constraint_type = "RANFSNormalMechanicalContact";
+  else
+    constraint_type = "MechanicalContactConstraint";
+
+  InputParameters params = _factory.getValidParams(constraint_type);
+
   params.applyParameters(parameters(), {"displacements"});
-  params.set<std::vector<VariableName>>("nodal_area") = {"nodal_area_" + name()};
   params.set<std::vector<VariableName>>("displacements") = displacements;
-  params.set<BoundaryName>("boundary") = _master;
   params.set<bool>("use_displaced_mesh") = true;
+
+  if (_formulation != "ranfs")
+  {
+    params.set<std::vector<VariableName>>("nodal_area") = {"nodal_area_" + name()};
+    params.set<BoundaryName>("boundary") = _master;
+  }
 
   for (unsigned int i = 0; i < ndisp; ++i)
   {
     std::string name = action_name + "_constraint_" + Moose::stringify(i);
 
-    params.set<unsigned int>("component") = i;
+    if (_formulation == "ranfs")
+      params.set<MooseEnum>("component") = i;
+    else
+      params.set<unsigned int>("component") = i;
+
     params.set<NonlinearVariableName>("variable") = displacements[i];
     params.set<std::vector<VariableName>>("master_variable") = {displacements[i]};
-    _problem->addConstraint("MechanicalContactConstraint", name, params);
+    _problem->addConstraint(constraint_type, name, params);
   }
 }
 
@@ -422,7 +459,8 @@ ContactAction::getModelEnum()
 MooseEnum
 ContactAction::getFormulationEnum()
 {
-  return MooseEnum("kinematic penalty augmented_lagrange tangential_penalty mortar", "kinematic");
+  return MooseEnum("ranfs kinematic penalty augmented_lagrange tangential_penalty mortar",
+                   "kinematic");
 }
 
 MooseEnum

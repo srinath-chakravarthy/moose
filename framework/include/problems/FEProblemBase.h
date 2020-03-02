@@ -594,6 +594,9 @@ public:
   virtual void addADKernel(const std::string & kernel_name,
                            const std::string & name,
                            InputParameters & parameters);
+  virtual void addADBoundaryCondition(const std::string & bc_name,
+                                      const std::string & name,
+                                      InputParameters & parameters);
 
   virtual void addKernel(const std::string & kernel_name,
                          const std::string & name,
@@ -914,7 +917,8 @@ public:
   VectorPostprocessorValue & declareVectorPostprocessorVector(const VectorPostprocessorName & name,
                                                               const std::string & vector_name,
                                                               bool contains_complete_history,
-                                                              bool is_broadcast);
+                                                              bool is_broadcast,
+                                                              bool is_distributed);
 
   /**
    * Whether or not the specified VectorPostprocessor has declared any vectors
@@ -1749,6 +1753,9 @@ public:
    * for that to be safe, we can only perform one refinement at a time
    */
   void uniformRefine();
+
+  using SubProblem::automaticScaling;
+  void automaticScaling(bool automatic_scaling) override;
 
 protected:
   /// Create extra tagged vectors and matrices

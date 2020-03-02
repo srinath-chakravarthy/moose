@@ -4,6 +4,7 @@ offset = 1e-2
 [GlobalParams]
   displacements = 'disp_x disp_y'
   diffusivity = 1e0
+  ping_pong_protection = true
 []
 
 [Mesh]
@@ -37,23 +38,15 @@ offset = 1e-2
   [../]
 []
 
+[Contact]
+  [./top_bottom]
+    mesh = file
+    slave = 10
+    master = 20
 
-[Constraints]
-  [./disp_x]
-    type = RANFSNormalMechanicalContact
-    slave = 10
-    master = 20
-    variable = disp_x
-    master_variable = disp_x
-    component = x
-  [../]
-  [./disp_y]
-    type = RANFSNormalMechanicalContact
-    slave = 10
-    master = 20
-    variable = disp_y
-    master_variable = disp_y
-    component = y
+    model = frictionless
+    formulation = ranfs
+    system = Constraint
   [../]
 []
 
@@ -88,7 +81,7 @@ offset = 1e-2
   type = Transient
   end_time = 200
   dt = 5
-  dtmin = 5
+  dtmin = 2.5
   solve_type = 'PJFNK'
   petsc_options = '-snes_converged_reason -ksp_converged_reason'
   petsc_options_iname = '-pc_type -pc_hypre_type -mat_mffd_err'

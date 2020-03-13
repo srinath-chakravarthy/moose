@@ -15,11 +15,12 @@
 #include "FluidPropertiesApp.h"
 #include "ChemicalReactionsApp.h"
 
-template <>
+defineLegacyParams(PorousFlowApp);
+
 InputParameters
-validParams<PorousFlowApp>()
+PorousFlowApp::validParams()
 {
-  InputParameters params = validParams<MooseApp>();
+  InputParameters params = MooseApp::validParams();
 
   params.set<bool>("automatic_automatic_scaling") = false;
 
@@ -31,7 +32,10 @@ validParams<PorousFlowApp>()
 
 registerKnownLabel("PorousFlowApp");
 
-PorousFlowApp::PorousFlowApp(const InputParameters & parameters) : MooseApp(parameters) {}
+PorousFlowApp::PorousFlowApp(const InputParameters & parameters) : MooseApp(parameters)
+{
+  PorousFlowApp::registerAll(_factory, _action_factory, _syntax);
+}
 
 PorousFlowApp::~PorousFlowApp() {}
 

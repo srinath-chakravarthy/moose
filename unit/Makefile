@@ -28,11 +28,8 @@ SOLID_MECHANICS    := yes
 TENSOR_MECHANICS   := yes
 PHASE_FIELD        := yes
 XFEM               := yes
-POROUS_FLOW        := yes
-FLUID_PROPERTIES   := yes
 CHEMICAL_REACTIONS := yes
 RDG                := yes
-STOCHASTIC_TOOLS   := yes
 include           $(MOOSE_DIR)/modules/modules.mk
 ###############################################################################
 

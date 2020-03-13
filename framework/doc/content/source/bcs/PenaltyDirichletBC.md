@@ -4,7 +4,7 @@
 
 ## Description
 
-`PenaltyDirichletBC` is a `NodalBC` used for enforcing Dirichlet boundary conditions
+`PenaltyDirichletBC` is a `IntegratedBC` used for enforcing Dirichlet boundary conditions
 which differs from the [`DirichletBC`](/DirichletBC.md) class in the way in which it handles the enforcement.
 It is appropriate for partial differential equations (PDEs) in the form
 
@@ -35,7 +35,7 @@ good agreement with the Dirichlet data, but not so large that the
 resulting Jacobian becomes ill-conditioned, resulting in failed solves
 and overall accuracy losses.
 
-Benefits of the penatly-based approach include simplified Dirichlet
+Benefits of the penalty-based approach include simplified Dirichlet
 boundary condition enforcement for non-Lagrange finite element bases,
 maintaining the symmetry (if any) of the original problem, and
 avoiding the need to zero out contributions from other rows in a

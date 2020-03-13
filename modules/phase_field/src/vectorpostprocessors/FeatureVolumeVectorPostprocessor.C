@@ -20,12 +20,13 @@
 
 registerMooseObject("PhaseFieldApp", FeatureVolumeVectorPostprocessor);
 
-template <>
+defineLegacyParams(FeatureVolumeVectorPostprocessor);
+
 InputParameters
-validParams<FeatureVolumeVectorPostprocessor>()
+FeatureVolumeVectorPostprocessor::validParams()
 {
-  InputParameters params = validParams<GeneralVectorPostprocessor>();
-  params += validParams<BoundaryRestrictable>();
+  InputParameters params = GeneralVectorPostprocessor::validParams();
+  params += BoundaryRestrictable::validParams();
 
   params.addRequiredParam<UserObjectName>("flood_counter",
                                           "The FeatureFloodCount UserObject to get values from.");
@@ -224,7 +225,7 @@ FeatureVolumeVectorPostprocessor::accumulateVolumes(
 
   // Accumulate the entire element volume into the dominant feature. Do not use the integral value
   if (_single_feature_per_elem && dominant_feature_id != FeatureFloodCount::invalid_id)
-    _feature_volumes[dominant_feature_id] += elem->volume();
+    _feature_volumes[dominant_feature_id] += _assembly.elementVolume(elem);
 }
 
 Real
@@ -274,7 +275,10 @@ FeatureVolumeVectorPostprocessor::accumulateBoundaryFaces(
 
   // Accumulate the boundary area/length into the dominant feature. Do not use the integral value
   if (_single_feature_per_elem && dominant_feature_id != FeatureFloodCount::invalid_id)
-    _feature_volumes[dominant_feature_id] += elem->side_ptr(side)->volume();
+  {
+    std::unique_ptr<const Elem> side_elem = elem->build_side_ptr(side);
+    _feature_volumes[dominant_feature_id] += _assembly.elementVolume(side_elem.get());
+  }
 }
 
 Real

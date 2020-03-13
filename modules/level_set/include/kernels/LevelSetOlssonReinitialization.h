@@ -25,6 +25,8 @@ template <ComputeStage compute_stage>
 class LevelSetOlssonReinitialization : public ADKernelGrad<compute_stage>
 {
 public:
+  static InputParameters validParams();
+
   LevelSetOlssonReinitialization(const InputParameters & parameters);
 
 protected:
@@ -36,7 +38,9 @@ protected:
   /// Interface thickness
   const PostprocessorValue & _epsilon;
 
+  /// Use modified reinitilization formulation (see Olsson et. al. (2007), section 2.2.1)
+  const bool _use_modified_reinitilization_formulation;
+
   usingKernelGradMembers;
   using ADKernelGrad<compute_stage>::getPostprocessorValue;
 };
-

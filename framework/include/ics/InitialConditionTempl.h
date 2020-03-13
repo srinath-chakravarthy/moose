@@ -17,11 +17,11 @@
 #include "libmesh/elem.h"
 
 // forward declarations
-template <typename>
-class InitialConditionTempl;
 class FEProblemBase;
 class Assembly;
 
+template <typename>
+class InitialConditionTempl;
 template <>
 InputParameters validParams<InitialConditionTempl<Real>>();
 template <>
@@ -135,6 +135,9 @@ protected:
   /// that this _IS_ valid even for nodes shared among several elements.
   const Elem * const & _current_elem;
 
+  /// the volume of the current element
+  const Real & _current_elem_volume;
+
   /// The current node if the point we are evaluating at also happens to be a node.
   /// Otherwise the pointer will be NULL.
   const Node * _current_node;
@@ -190,6 +193,13 @@ protected:
   /// the mesh dimension
   unsigned int _dim;
 };
+
+template <typename T>
+InputParameters
+InitialConditionTempl<T>::validParams()
+{
+  return InitialConditionBase::validParams();
+}
 
 typedef InitialConditionTempl<Real> InitialCondition;
 typedef InitialConditionTempl<RealVectorValue> VectorInitialCondition;

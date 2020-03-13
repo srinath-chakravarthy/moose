@@ -1753,7 +1753,7 @@ FEProblemBase::reinitNeighbor(const Elem * elem, unsigned int side, THREAD_ID ti
   _aux->reinitNeighborFace(neighbor, neighbor_side, bnd_id, tid);
 
   if (_displaced_problem && _reinit_displaced_face)
-    _displaced_problem->reinitNeighbor(elem, side, tid);
+    _displaced_problem->reinitNeighbor(_displaced_mesh->elemPtr(elem->id()), side, tid);
 }
 
 void
@@ -4655,6 +4655,11 @@ FEProblemBase::solve()
     _is_petsc_options_inserted = true;
   }
 #endif
+  // set up DM which is required if use a field split preconditioner
+  // We need to setup DM every "solve()" because libMesh destroy SNES after solve()
+  // Do not worry, DM setup is very cheap
+  if (_nl->haveFieldSplitPreconditioner())
+    Moose::PetscSupport::petscSetupDM(*_nl);
 #endif
 
   Moose::setSolverDefaults(*this);

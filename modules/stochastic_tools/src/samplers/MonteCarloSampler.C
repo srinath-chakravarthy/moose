@@ -10,7 +10,11 @@
 #include "MonteCarloSampler.h"
 #include "Distribution.h"
 
-registerMooseObject("StochasticToolsApp", MonteCarloSampler);
+registerMooseObjectAliased("StochasticToolsApp", MonteCarloSampler, "MonteCarlo");
+registerMooseObjectReplaced("StochasticToolsApp",
+                            MonteCarloSampler,
+                            "07/01/2020 00:00",
+                            MonteCarlo);
 
 defineLegacyParams(MonteCarloSampler);
 
@@ -29,7 +33,8 @@ MonteCarloSampler::validParams()
 
 MonteCarloSampler::MonteCarloSampler(const InputParameters & parameters)
   : Sampler(parameters),
-    _distribution_names(getParam<std::vector<DistributionName>>("distributions"))
+    _distribution_names(getParam<std::vector<DistributionName>>("distributions")),
+    _perf_compute_sample(registerTimedSection("computeSample", 4))
 {
   for (const DistributionName & name : _distribution_names)
     _distributions.push_back(&getDistributionByName(name));
@@ -41,5 +46,6 @@ MonteCarloSampler::MonteCarloSampler(const InputParameters & parameters)
 Real
 MonteCarloSampler::computeSample(dof_id_type /*row_index*/, dof_id_type col_index)
 {
+  TIME_SECTION(_perf_compute_sample);
   return _distributions[col_index]->quantile(getRand());
 }

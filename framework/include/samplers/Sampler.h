@@ -42,7 +42,7 @@ InputParameters validParams<Sampler>();
 class Sampler : public MooseObject,
                 public SetupInterface,
                 public DistributionInterface,
-                PerfGraphInterface
+                public PerfGraphInterface
 {
 public:
   static InputParameters validParams();
@@ -137,7 +137,18 @@ protected:
    *
    * @return A double for the random number, this is double because MooseRandom class uses double.
    */
-  double getRand(unsigned int index = 0);
+  Real getRand(unsigned int index = 0);
+
+  /**
+   * Get the next random integer from the generator within the specified range [lower, upper)
+   * @param index The index of the seed, by default this is zero. To add additional seeds
+   *              indices call the setNumberOfRequiedRandomSeeds method.
+   * @param lower Lower bounds
+   * @param upper Upper bounds
+   *
+   * @return A integer for the random number
+   */
+  uint32_t getRandl(unsigned int index, uint32_t lower, uint32_t upper);
 
   // TODO: Restore this pure virtual after application are updated to new interface
   /**
@@ -220,12 +231,6 @@ private:
   /// Random number generator, don't give users access. Control it via the interface from this class.
   MooseRandom _generator;
 
-  /// Seed generator
-  MooseRandom _seed_generator;
-
-  /// Initial random number seed
-  const unsigned int & _seed;
-
   /// Number of rows for this processor
   dof_id_type _n_local_rows;
 
@@ -241,6 +246,9 @@ private:
   /// Total number of columns in the sample matrix
   dof_id_type _n_cols;
 
+  /// Number of seeds
+  std::size_t _n_seeds;
+
   /// Iterator index for getNextLocalRow method
   dof_id_type _next_local_row;
 
@@ -249,6 +257,9 @@ private:
 
   /// Flag to indicate if the init method for this class was called
   bool _initialized;
+
+  /// Flag for initial execute to allow the first set of random numbers to be always be the same
+  bool _has_executed;
 
   /// Max number of entries for matrix returned by getGlobalSamples
   const dof_id_type _limit_get_global_samples;
@@ -264,7 +275,9 @@ private:
   const PerfID _perf_get_global_samples;
   const PerfID _perf_get_local_samples;
   const PerfID _perf_get_next_local_row;
+  const PerfID _perf_sample_row;
+  const PerfID _perf_local_sample_matrix;
+  const PerfID _perf_sample_matrix;
   const PerfID _perf_advance_generator;
-  const PerfID _perf_get_rand;
   ///@}
 };

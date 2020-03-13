@@ -16,33 +16,9 @@
 #include "libmesh/fe_interface.h"
 #include "libmesh/quadrature.h"
 
-template <>
-InputParameters
-validParams<InitialConditionTempl<Real>>()
-{
-  return InitialConditionTempl<Real>::validParams();
-}
-template <>
-InputParameters
-validParams<InitialConditionTempl<RealVectorValue>>()
-{
-  return InitialConditionTempl<RealVectorValue>::validParams();
-}
-
-template <>
-InputParameters
-validParams<InitialConditionTempl<RealEigenVector>>()
-{
-  return InitialConditionTempl<RealEigenVector>::validParams();
-}
-
-template <typename T>
-InputParameters
-InitialConditionTempl<T>::validParams()
-{
-  InputParameters params = InitialConditionBase::validParams();
-  return params;
-}
+defineLegacyParams(InitialConditionTempl<Real>);
+defineLegacyParams(InitialConditionTempl<RealVectorValue>);
+defineLegacyParams(InitialConditionTempl<RealEigenVector>);
 
 template <typename T>
 InitialConditionTempl<T>::InitialConditionTempl(const InputParameters & parameters)
@@ -55,6 +31,7 @@ InitialConditionTempl<T>::InitialConditionTempl(const InputParameters & paramete
     _var(_sys.getFieldVariable<T>(parameters.get<THREAD_ID>("_tid"),
                                   parameters.get<VariableName>("variable"))),
     _current_elem(_var.currentElem()),
+    _current_elem_volume(_assembly.elemVolume()),
     _current_node(nullptr),
     _qp(0),
     _fe_type(_var.feType())

@@ -217,8 +217,6 @@ FEProblemBase::FEProblemBase(const InputParameters & parameters)
     _nl(nullptr),
     _aux(nullptr),
     _coupling(Moose::COUPLING_DIAG),
-    _distributions(/*threaded=*/false),
-    _samplers(_app.getExecuteOnEnum()),
     _material_props(
         declareRestartableDataWithContext<MaterialPropertyStorage>("material_props", &_mesh)),
     _bnd_material_props(
@@ -330,7 +328,8 @@ FEProblemBase::FEProblemBase(const InputParameters & parameters)
     _u_dot_old_requested(false),
     _u_dotdot_old_requested(false),
     _has_mortar(false),
-    _num_grid_steps(0)
+    _num_grid_steps(0),
+    _displaced_neighbor_ref_pts("invert_elem_phys use_undisplaced_ref unset", "unset")
 {
   _time = 0.0;
   _time_old = 0.0;
@@ -1753,7 +1752,18 @@ FEProblemBase::reinitNeighbor(const Elem * elem, unsigned int side, THREAD_ID ti
   _aux->reinitNeighborFace(neighbor, neighbor_side, bnd_id, tid);
 
   if (_displaced_problem && _reinit_displaced_face)
-    _displaced_problem->reinitNeighbor(_displaced_mesh->elemPtr(elem->id()), side, tid);
+  {
+    // There are cases like for cohesive zone modeling without significant sliding where we cannot
+    // use FEInterface::inverse_map in Assembly::reinitElemAndNeighbor in the displaced problem
+    // because the physical points coming from the element don't actually lie on the neighbor. In
+    // that case we instead pass over the reference points from the undisplaced calculation
+    const std::vector<Point> * displaced_ref_pts = nullptr;
+    if (_displaced_neighbor_ref_pts == "use_undisplaced_ref")
+      displaced_ref_pts = &_assembly[tid]->qRuleNeighbor()->get_points();
+
+    _displaced_problem->reinitNeighbor(
+        _displaced_mesh->elemPtr(elem->id()), side, tid, displaced_ref_pts);
+  }
 }
 
 void
@@ -1942,16 +1952,21 @@ FEProblemBase::addDistribution(std::string type,
 {
   parameters.set<std::string>("type") = type;
   std::shared_ptr<Distribution> dist = _factory.create<Distribution>(type, name, parameters);
-  _distributions.addObject(dist);
+  theWarehouse().add(dist);
 }
 
 Distribution &
 FEProblemBase::getDistribution(const std::string & name)
 {
-  if (!_distributions.hasActiveObject(name))
-    mooseError("Unable to find distribution " + name);
-
-  return *(_distributions.getActiveObject(name));
+  std::vector<Distribution *> objs;
+  theWarehouse()
+      .query()
+      .condition<AttribSystem>("Distribution")
+      .condition<AttribName>(name)
+      .queryInto(objs);
+  if (objs.empty())
+    mooseError("Unable to find Distribution with name '" + name + "'");
+  return *(objs[0]);
 }
 
 void
@@ -1961,17 +1976,26 @@ FEProblemBase::addSampler(std::string type, const std::string & name, InputParam
   {
     std::shared_ptr<Sampler> obj = _factory.create<Sampler>(type, name, parameters, tid);
     obj->init();
-    _samplers.addObject(obj, tid);
+    theWarehouse().add(obj);
   }
 }
 
 Sampler &
 FEProblemBase::getSampler(const std::string & name, THREAD_ID tid)
 {
-  if (!_samplers.hasActiveObject(name, tid))
-    mooseError("Unable to find Sampler " + name);
-
-  return *(_samplers.getActiveObject(name, tid));
+  std::vector<Sampler *> objs;
+  theWarehouse()
+      .query()
+      .condition<AttribSystem>("Sampler")
+      .condition<AttribThread>(tid)
+      .condition<AttribName>(name)
+      .queryInto(objs);
+  if (objs.empty())
+    mooseError(
+        "Unable to find Sampler with name '" + name +
+        "', if you are attempting to access this object in the constructor of another object then "
+        "the object being retrieved must occur prior to the caller within the input file.");
+  return *(objs[0]);
 }
 
 bool
@@ -2537,11 +2561,38 @@ FEProblemBase::addDGKernel(const std::string & dg_kernel_name,
                            const std::string & name,
                            InputParameters & parameters)
 {
+  bool use_undisplaced_reference_points = parameters.get<bool>("_use_undisplaced_reference_points");
+
   if (_displaced_problem && parameters.get<bool>("use_displaced_mesh"))
   {
     parameters.set<SubProblem *>("_subproblem") = _displaced_problem.get();
     parameters.set<SystemBase *>("_sys") = &_displaced_problem->nlSys();
     _reinit_displaced_face = true;
+
+    if (use_undisplaced_reference_points)
+    {
+      if (_displaced_neighbor_ref_pts == "invert_elem_phys")
+        mooseError(
+            "Cannot use elem-neighbor objects which rely on 1) undisplaced reference points and 2) "
+            "inversion of master elem physical points in the same simulation");
+      else if (_displaced_neighbor_ref_pts == "unset")
+        _displaced_neighbor_ref_pts = "use_undisplaced_ref";
+      else if (_displaced_neighbor_ref_pts != "use_undisplaced_ref")
+        mooseError("_displaced_neighbor_ref_pts has an invalid state ",
+                   std::string(_displaced_neighbor_ref_pts));
+    }
+    else
+    {
+      if (_displaced_neighbor_ref_pts == "use_undisplaced_ref")
+        mooseError(
+            "Cannot use elem-neighbor objects which rely on 1) undisplaced reference points and 2) "
+            "inversion of master elem physical points in the same simulation");
+      else if (_displaced_neighbor_ref_pts == "unset")
+        _displaced_neighbor_ref_pts = "invert_elem_phys";
+      else if (_displaced_neighbor_ref_pts != "invert_elem_phys")
+        mooseError("_displaced_neighbor_ref_pts has an invalid state ",
+                   std::string(_displaced_neighbor_ref_pts));
+    }
   }
   else
   {
@@ -2571,11 +2622,38 @@ FEProblemBase::addInterfaceKernel(const std::string & interface_kernel_name,
                                   const std::string & name,
                                   InputParameters & parameters)
 {
+  bool use_undisplaced_reference_points = parameters.get<bool>("_use_undisplaced_reference_points");
+
   if (_displaced_problem && parameters.get<bool>("use_displaced_mesh"))
   {
     parameters.set<SubProblem *>("_subproblem") = _displaced_problem.get();
     parameters.set<SystemBase *>("_sys") = &_displaced_problem->nlSys();
     _reinit_displaced_face = true;
+
+    if (use_undisplaced_reference_points)
+    {
+      if (_displaced_neighbor_ref_pts == "invert_elem_phys")
+        mooseError(
+            "Cannot use elem-neighbor objects which rely on 1) undisplaced reference points and 2) "
+            "inversion of master elem physical points in the same simulation");
+      else if (_displaced_neighbor_ref_pts == "unset")
+        _displaced_neighbor_ref_pts = "use_undisplaced_ref";
+      else if (_displaced_neighbor_ref_pts != "use_undisplaced_ref")
+        mooseError("_displaced_neighbor_ref_pts has an invalid state ",
+                   std::string(_displaced_neighbor_ref_pts));
+    }
+    else
+    {
+      if (_displaced_neighbor_ref_pts == "use_undisplaced_ref")
+        mooseError(
+            "Cannot use elem-neighbor objects which rely on 1) undisplaced reference points and 2) "
+            "inversion of master elem physical points in the same simulation");
+      else if (_displaced_neighbor_ref_pts == "unset")
+        _displaced_neighbor_ref_pts = "invert_elem_phys";
+      else if (_displaced_neighbor_ref_pts != "invert_elem_phys")
+        mooseError("_displaced_neighbor_ref_pts has an invalid state ",
+                   std::string(_displaced_neighbor_ref_pts));
+    }
   }
   else
   {
@@ -3199,7 +3277,7 @@ FEProblemBase::addUserObject(std::string user_object_name,
     // TODO: delete this line after apps have been updated to not call getUserObjects
     _all_user_objects.addObject(user_object, tid);
 
-    theWarehouse().add(user_object, "UserObject");
+    theWarehouse().add(user_object);
 
     // Attempt to create all the possible UserObject types
     auto euo = std::dynamic_pointer_cast<ElementUserObject>(user_object);
@@ -3229,7 +3307,12 @@ const UserObject &
 FEProblemBase::getUserObjectBase(const std::string & name) const
 {
   std::vector<UserObject *> objs;
-  theWarehouse().query().condition<AttribThread>(0).condition<AttribName>(name).queryInto(objs);
+  theWarehouse()
+      .query()
+      .condition<AttribSystem>("UserObject")
+      .condition<AttribThread>(0)
+      .condition<AttribName>(name)
+      .queryInto(objs);
   if (objs.empty())
     mooseError("Unable to find user object with name '" + name + "'");
   return *(objs[0]);
@@ -3239,7 +3322,12 @@ bool
 FEProblemBase::hasUserObject(const std::string & name) const
 {
   std::vector<UserObject *> objs;
-  theWarehouse().query().condition<AttribThread>(0).condition<AttribName>(name).queryInto(objs);
+  theWarehouse()
+      .query()
+      .condition<AttribSystem>("UserObject")
+      .condition<AttribThread>(0)
+      .condition<AttribName>(name)
+      .queryInto(objs);
   return !objs.empty();
 }
 
@@ -3726,14 +3814,19 @@ FEProblemBase::executeSamplers(const ExecFlagType & exec_type)
   // do a serial loop.
   for (THREAD_ID tid = 0; tid < libMesh::n_threads(); ++tid)
   {
-    const auto & objects = _samplers[exec_type].getActiveObjects(tid);
+    std::vector<Sampler *> objects;
+    theWarehouse()
+        .query()
+        .condition<AttribSystem>("Sampler")
+        .condition<AttribThread>(tid)
+        .condition<AttribExecOns>(exec_type)
+        .queryInto(objects);
+
     if (!objects.empty())
     {
       TIME_SECTION(_execute_samplers_timer);
-
-      _samplers.setup(exec_type);
-      for (auto & sampler : objects)
-        sampler->execute();
+      FEProblemBase::objectSetupHelper<Sampler>(objects, exec_type);
+      FEProblemBase::objectExecuteHelper<Sampler>(objects);
     }
   }
 }
@@ -3754,7 +3847,6 @@ FEProblemBase::updateActiveObjects()
     _residual_materials.updateActive(tid);
     _jacobian_materials.updateActive(tid);
     _discrete_materials.updateActive(tid);
-    _samplers.updateActive(tid);
   }
 
   _control_warehouse.updateActive();

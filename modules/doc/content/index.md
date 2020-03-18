@@ -30,8 +30,6 @@ MOOSE works on Mac OS, Linux, and Windows, and it is easy to [get started](getti
 !col-end!
 !row-end!
 
-## Upcoming Training Events
-
 !include upcoming_training.md
 
 !gallery! large=6
@@ -129,6 +127,7 @@ A 3D soil desiccation simulation using phase-field for cohesive fracture model, 
 - [Physics Modules:](modules/index.md)
 
   - [Heat Conduction](HeatConduction.md)
+  - [Geochemistry](geochemistry/index.md)
   - [Navier Stokes](NavierStokes/index.md)
   - [Solid Mechanics](syntax/Modules/TensorMechanics/index.md)
   - [Contact](contact/index.md)

@@ -23,6 +23,7 @@ ADComputeIncrementalStrainBase::ADComputeIncrementalStrainBase(const InputParame
     _strain_rate(declareADProperty<RankTwoTensor>(_base_name + "strain_rate")),
     _strain_increment(declareADProperty<RankTwoTensor>(_base_name + "strain_increment")),
     _rotation_increment(declareADProperty<RankTwoTensor>(_base_name + "rotation_increment")),
+	_deformation_gradient(declareADProperty<RankTwoTensor>(_base_name + "deformation_gradient")),
     _mechanical_strain_old(getMaterialPropertyOld<RankTwoTensor>(_base_name + "mechanical_strain")),
     _total_strain_old(getMaterialPropertyOld<RankTwoTensor>(_base_name + "total_strain")),
     _eigenstrains_old(_eigenstrain_names.size())
@@ -49,6 +50,7 @@ ADComputeIncrementalStrainBase::initQpStatefulProperties()
 {
   _mechanical_strain[_qp].zero();
   _total_strain[_qp].zero();
+  _deformation_gradient[_qp].setToIdentity();
 }
 
 void

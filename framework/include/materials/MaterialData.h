@@ -82,8 +82,15 @@ public:
   /// material properties for given element (and possible side)
   void swap(const Elem & elem, unsigned int side = 0);
 
-  /// Reinit material properties for given element (and possible side)
-  void reinit(const std::vector<std::shared_ptr<MaterialBase>> & mats);
+  /**
+   * Reinit material properties for given element (and possible side)
+   * @param mats The material objects for which to compute properties
+   * @param execute_stateful Whether to execute material objects that have stateful properties. This
+   * should be \p false when for example executing material objects for mortar contexts in which
+   * stateful properties don't make sense
+   */
+  void reinit(const std::vector<std::shared_ptr<MaterialBase>> & mats,
+              bool execute_stateful = true);
 
   /// Calls the reset method of Materials to ensure that they are in a proper state.
   void reset(const std::vector<std::shared_ptr<MaterialBase>> & mats);
@@ -110,6 +117,17 @@ public:
   template <typename T>
   bool haveADProperty(const std::string & prop_name) const;
 
+  template <typename T, bool is_ad, typename std::enable_if<is_ad, int>::type = 0>
+  bool haveGenericProperty(const std::string & prop_name) const
+  {
+    return haveADProperty<T>(prop_name);
+  }
+  template <typename T, bool is_ad, typename std::enable_if<!is_ad, int>::type = 0>
+  bool haveGenericProperty(const std::string & prop_name) const
+  {
+    return haveProperty<T>(prop_name);
+  }
+
   ///@{
   /**
    * Methods for retieving a MaterialProperty object
@@ -117,6 +135,16 @@ public:
    * @param prop_name The name of the property
    * @return The property for the supplied type and name
    */
+  template <typename T, bool is_ad, typename std::enable_if<is_ad, int>::type = 0>
+  ADMaterialProperty<T> & getGenericProperty(const std::string & prop_name)
+  {
+    return getADProperty<T>(prop_name);
+  }
+  template <typename T, bool is_ad, typename std::enable_if<!is_ad, int>::type = 0>
+  MaterialProperty<T> & getGenericProperty(const std::string & prop_name)
+  {
+    return getProperty<T>(prop_name);
+  }
   template <typename T>
   MaterialProperty<T> & getProperty(const std::string & prop_name);
   template <typename T>

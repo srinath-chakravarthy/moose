@@ -633,22 +633,26 @@ FEProblemBase::initialSetup()
 
   // always execute to get the max number of DoF per element and node needed to initialize phi_zero
   // variables
-  CONSOLE_TIMED_PRINT("Computing max dofs per elem/node");
+  dof_id_type max_var_n_dofs_per_elem;
+  dof_id_type max_var_n_dofs_per_node;
+  {
+    CONSOLE_TIMED_PRINT("Computing max dofs per elem/node");
 
-  MaxVarNDofsPerElem mvndpe(*this, *_nl);
-  Threads::parallel_reduce(*_mesh.getActiveLocalElementRange(), mvndpe);
-  auto max_var_n_dofs_per_elem = mvndpe.max();
-  _communicator.max(max_var_n_dofs_per_elem);
+    MaxVarNDofsPerElem mvndpe(*this, *_nl);
+    Threads::parallel_reduce(*_mesh.getActiveLocalElementRange(), mvndpe);
+    max_var_n_dofs_per_elem = mvndpe.max();
+    _communicator.max(max_var_n_dofs_per_elem);
+
+    MaxVarNDofsPerNode mvndpn(*this, *_nl);
+    Threads::parallel_reduce(*_mesh.getLocalNodeRange(), mvndpn);
+    max_var_n_dofs_per_node = mvndpn.max();
+    _communicator.max(max_var_n_dofs_per_node);
+  }
 
   _nl->assignMaxVarNDofsPerElem(max_var_n_dofs_per_elem);
   auto displaced_problem = getDisplacedProblem();
   if (displaced_problem)
     displaced_problem->nlSys().assignMaxVarNDofsPerElem(max_var_n_dofs_per_elem);
-
-  MaxVarNDofsPerNode mvndpn(*this, *_nl);
-  Threads::parallel_reduce(*_mesh.getLocalNodeRange(), mvndpn);
-  auto max_var_n_dofs_per_node = mvndpn.max();
-  _communicator.max(max_var_n_dofs_per_node);
 
   _nl->assignMaxVarNDofsPerNode(max_var_n_dofs_per_node);
   if (displaced_problem)
@@ -1527,6 +1531,38 @@ FEProblemBase::addJacobianBlock(SparseMatrix<Number> & jacobian,
   if (_displaced_problem)
   {
     _displaced_problem->addJacobianBlock(jacobian, ivar, jvar, dof_map, dof_indices, tid);
+    if (_has_nonlocal_coupling)
+      if (_nonlocal_cm(ivar, jvar) != 0)
+      {
+        MooseVariableFEBase & jv = _nl->getVariable(tid, jvar);
+        _displaced_problem->addJacobianBlockNonlocal(
+            jacobian, ivar, jvar, dof_map, dof_indices, jv.allDofIndices(), tid);
+      }
+  }
+}
+
+void
+FEProblemBase::addJacobianBlockTags(SparseMatrix<Number> & jacobian,
+                                    unsigned int ivar,
+                                    unsigned int jvar,
+                                    const DofMap & dof_map,
+                                    std::vector<dof_id_type> & dof_indices,
+                                    const std::set<TagID> & tags,
+                                    THREAD_ID tid)
+{
+  _assembly[tid]->addJacobianBlockTags(jacobian, ivar, jvar, dof_map, dof_indices, tags);
+
+  if (_has_nonlocal_coupling)
+    if (_nonlocal_cm(ivar, jvar) != 0)
+    {
+      MooseVariableFEBase & jv = _nl->getVariable(tid, jvar);
+      _assembly[tid]->addJacobianBlockNonlocal(
+          jacobian, ivar, jvar, dof_map, dof_indices, jv.allDofIndices());
+    }
+
+  if (_displaced_problem)
+  {
+    _displaced_problem->addJacobianBlockTags(jacobian, ivar, jvar, dof_map, dof_indices, tags, tid);
     if (_has_nonlocal_coupling)
       if (_nonlocal_cm(ivar, jvar) != 0)
       {
@@ -3087,7 +3123,10 @@ FEProblemBase::reinitMaterials(SubdomainID blk_id, THREAD_ID tid, bool swap_stat
 }
 
 void
-FEProblemBase::reinitMaterialsFace(SubdomainID blk_id, THREAD_ID tid, bool swap_stateful)
+FEProblemBase::reinitMaterialsFace(SubdomainID blk_id,
+                                   THREAD_ID tid,
+                                   bool swap_stateful,
+                                   bool execute_stateful)
 {
   if (hasActiveMaterialProperties(tid))
   {
@@ -3106,7 +3145,8 @@ FEProblemBase::reinitMaterialsFace(SubdomainID blk_id, THREAD_ID tid, bool swap_
 
     if (_materials[Moose::FACE_MATERIAL_DATA].hasActiveBlockObjects(blk_id, tid))
       _bnd_material_data[tid]->reinit(
-          _materials[Moose::FACE_MATERIAL_DATA].getActiveBlockObjects(blk_id, tid));
+          _materials[Moose::FACE_MATERIAL_DATA].getActiveBlockObjects(blk_id, tid),
+          execute_stateful);
   }
 }
 
@@ -3140,7 +3180,10 @@ FEProblemBase::reinitMaterialsNeighborGhost(SubdomainID blk_id, THREAD_ID tid, b
 }
 
 void
-FEProblemBase::reinitMaterialsNeighbor(SubdomainID blk_id, THREAD_ID tid, bool swap_stateful)
+FEProblemBase::reinitMaterialsNeighbor(SubdomainID blk_id,
+                                       THREAD_ID tid,
+                                       bool swap_stateful,
+                                       bool execute_stateful)
 {
   if (hasActiveMaterialProperties(tid))
   {
@@ -3160,12 +3203,16 @@ FEProblemBase::reinitMaterialsNeighbor(SubdomainID blk_id, THREAD_ID tid, bool s
 
     if (_materials[Moose::NEIGHBOR_MATERIAL_DATA].hasActiveBlockObjects(blk_id, tid))
       _neighbor_material_data[tid]->reinit(
-          _materials[Moose::NEIGHBOR_MATERIAL_DATA].getActiveBlockObjects(blk_id, tid));
+          _materials[Moose::NEIGHBOR_MATERIAL_DATA].getActiveBlockObjects(blk_id, tid),
+          execute_stateful);
   }
 }
 
 void
-FEProblemBase::reinitMaterialsBoundary(BoundaryID boundary_id, THREAD_ID tid, bool swap_stateful)
+FEProblemBase::reinitMaterialsBoundary(BoundaryID boundary_id,
+                                       THREAD_ID tid,
+                                       bool swap_stateful,
+                                       bool execute_stateful)
 {
   if (hasActiveMaterialProperties(tid))
   {
@@ -3182,7 +3229,8 @@ FEProblemBase::reinitMaterialsBoundary(BoundaryID boundary_id, THREAD_ID tid, bo
           _discrete_materials.getActiveBoundaryObjects(boundary_id, tid));
 
     if (_materials.hasActiveBoundaryObjects(boundary_id, tid))
-      _bnd_material_data[tid]->reinit(_materials.getActiveBoundaryObjects(boundary_id, tid));
+      _bnd_material_data[tid]->reinit(_materials.getActiveBoundaryObjects(boundary_id, tid),
+                                      execute_stateful);
   }
 }
 

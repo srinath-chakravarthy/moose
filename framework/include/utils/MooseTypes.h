@@ -12,6 +12,7 @@
 #include "Moose.h"
 #include "ADReal.h"
 #include "ADRankTwoTensorForward.h"
+#include "ADRankThreeTensorForward.h"
 #include "ADRankFourTensorForward.h"
 
 #include "libmesh/libmesh.h"
@@ -181,19 +182,6 @@ typedef unsigned int TagTypeID;
 typedef unsigned int PerfID;
 using RestartableDataMapName = std::string; // see MooseApp.h
 
-template <bool is_ad>
-struct GenericRealStruct
-{
-  typedef Real type;
-};
-template <>
-struct GenericRealStruct<true>
-{
-  typedef ADReal type;
-};
-template <bool is_ad>
-using GenericReal = typename GenericRealStruct<is_ad>::type;
-
 typedef StoredRange<std::vector<dof_id_type>::iterator, dof_id_type> NodeIdRange;
 typedef StoredRange<std::vector<const Elem *>::iterator, const Elem *> ConstElemPointerRange;
 
@@ -215,23 +203,6 @@ enum GeometryType
   Face
 };
 
-template <typename T>
-struct ADType;
-template <>
-struct ADType<Real>
-{
-  typedef ADReal type;
-};
-template <template <typename> class W>
-struct ADType<W<Real>>
-{
-  typedef W<ADReal> type;
-};
-template <>
-struct ADType<RealEigenVector>
-{
-  typedef RealEigenVector type;
-};
 template <typename OutputType>
 struct ShapeType
 {
@@ -253,7 +224,7 @@ struct DOFType<RealVectorValue>
 {
   typedef Real type;
 };
-} // MOOSE
+} // namespace Moose
 
 template <typename OutputType>
 struct OutputTools
@@ -350,6 +321,50 @@ typedef MooseArray<ADRealVectorValue> ADVectorVariableValue;
 typedef MooseArray<ADRealTensorValue> ADVectorVariableGradient;
 typedef MooseArray<libMesh::TypeNTensor<3, DualReal>> ADVectorVariableSecond;
 
+namespace Moose
+{
+
+// type conversion from regular to AD
+template <typename T>
+struct ADType;
+template <>
+struct ADType<Real>
+{
+  typedef ADReal type;
+};
+template <>
+struct ADType<RankTwoTensor>
+{
+  typedef ADRankTwoTensor type;
+};
+template <>
+struct ADType<RankThreeTensor>
+{
+  typedef ADRankThreeTensor type;
+};
+template <>
+struct ADType<RankFourTensor>
+{
+  typedef ADRankFourTensor type;
+};
+template <template <typename> class W>
+struct ADType<W<Real>>
+{
+  typedef W<ADReal> type;
+};
+template <>
+struct ADType<RealEigenVector>
+{
+  typedef RealEigenVector type;
+};
+template <>
+struct ADType<VariableValue>
+{
+  typedef ADVariableValue type;
+};
+
+} // namespace Moose
+
 /**
  * some AD typedefs for backwards compatability
  */
@@ -393,6 +408,33 @@ template <typename T>
 using ADTemplateVariablePhiGradient =
     typename OutputTools<typename Moose::ADType<T>::type>::VariablePhiGradient;
 using ADVariablePhiGradient = ADTemplateVariablePhiGradient<Real>;
+
+// Templated typed to support is_ad templated classes
+namespace Moose
+{
+
+template <typename T, bool is_ad>
+struct GenericStruct
+{
+  typedef T type;
+};
+template <typename T>
+struct GenericStruct<T, true>
+{
+  typedef typename ADType<T>::type type;
+};
+
+} // namespace Moose
+template <bool is_ad>
+using GenericReal = typename Moose::GenericStruct<Real, is_ad>::type;
+template <bool is_ad>
+using GenericRankTwoTensor = typename Moose::GenericStruct<RankTwoTensor, is_ad>::type;
+template <bool is_ad>
+using GenericRankThreeTensor = typename Moose::GenericStruct<RankThreeTensor, is_ad>::type;
+template <bool is_ad>
+using GenericRankFourTensor = typename Moose::GenericStruct<RankFourTensor, is_ad>::type;
+template <bool is_ad>
+using GenericVariableValue = typename Moose::GenericStruct<VariableValue, is_ad>::type;
 
 #define declareADValidParams(ADObjectType)                                                         \
   template <>                                                                                      \
@@ -621,9 +663,8 @@ enum EigenSolveType
   EST_KRYLOVSCHUR,        ///< Krylov-Schur
   EST_JACOBI_DAVIDSON,    ///< Jacobi-Davidson
   EST_NONLINEAR_POWER,    ///< Nonlinear inverse power
-  EST_MF_NONLINEAR_POWER, ///< Matrix-free nonlinear inverse power
-  EST_MONOLITH_NEWTON,    ///< Newton-based eigen solver
-  EST_MF_MONOLITH_NEWTON, ///< Matrix-free Newton-based eigen solver
+  EST_MF_MONOLITH_NEWTON, ///< Matrix-free Newton-based eigen solver (temporarily keep for RattleSnake). We should remove it once RattleSnake is updated
+  EST_NEWTON,             ///< Newton-based eigen solver
 };
 
 /**

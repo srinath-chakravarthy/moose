@@ -124,8 +124,16 @@ public:
    * Return a material property that is initialized to zero by default and does
    * not need to (but can) be declared by another material.
    */
+  template <typename T, bool is_ad>
+  const GenericMaterialProperty<T, is_ad> &
+  getGenericZeroMaterialProperty(const std::string & prop_name);
+
+  /// for backwards compatibility
   template <typename T>
-  const MaterialProperty<T> & getZeroMaterialProperty(const std::string & prop_name);
+  const MaterialProperty<T> & getZeroMaterialProperty(const std::string & prop_name)
+  {
+    return getGenericZeroMaterialProperty<T, false>(prop_name);
+  }
 
   /**
    * Return a set of properties accessed with getMaterialProperty
@@ -164,6 +172,11 @@ public:
    * MUST be reinited before evaluating this object
    */
   virtual const std::set<unsigned int> & getMatPropDependencies() const = 0;
+
+  /**
+   * @return Whether this material has stateful properties
+   */
+  bool hasStatefulProperties() const { return _has_stateful_property; }
 
 protected:
   /**
@@ -299,12 +312,12 @@ MaterialBase::declarePropertyOlder(const std::string & prop_name)
   return materialData().declarePropertyOlder<T>(prop_name);
 }
 
-template <typename T>
-const MaterialProperty<T> &
-MaterialBase::getZeroMaterialProperty(const std::string & prop_name)
+template <typename T, bool is_ad>
+const GenericMaterialProperty<T, is_ad> &
+MaterialBase::getGenericZeroMaterialProperty(const std::string & prop_name)
 {
   checkExecutionStage();
-  MaterialProperty<T> & preload_with_zero = materialData().getProperty<T>(prop_name);
+  auto & preload_with_zero = materialData().getGenericProperty<T, is_ad>(prop_name);
 
   _requested_props.insert(prop_name);
   registerPropName(prop_name, true, MaterialBase::CURRENT);
@@ -324,7 +337,7 @@ MaterialBase::getZeroMaterialProperty(const std::string & prop_name)
   if (nqp > preload_with_zero.size())
     preload_with_zero.resize(nqp);
   for (unsigned int qp = 0; qp < nqp; ++qp)
-    MathUtils::mooseSetToZero<T>(preload_with_zero[qp]);
+    MathUtils::mooseSetToZero(preload_with_zero[qp]);
 
   return preload_with_zero;
 }

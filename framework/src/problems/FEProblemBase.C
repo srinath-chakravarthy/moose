@@ -111,7 +111,7 @@ namespace
  * Method for sorting the MooseVariableFEBases based on variable numbers
  */
 bool
-sortMooseVariables(MooseVariableFEBase * a, MooseVariableFEBase * b)
+sortMooseVariables(const MooseVariableFEBase * a, const MooseVariableFEBase * b)
 {
   return a->number() < b->number();
 }
@@ -205,6 +205,8 @@ FEProblemBase::validParams()
                                         "(Kernels, BCs, etc.) by setting tags on them.");
 
   params.addPrivateParam<MooseMesh *>("mesh");
+
+  params.declareControllable("solve");
 
   return params;
 }
@@ -1214,7 +1216,7 @@ FEProblemBase::checkNonlocalCoupling()
 void
 FEProblemBase::checkUserObjectJacobianRequirement(THREAD_ID tid)
 {
-  std::set<MooseVariableFEBase *> uo_jacobian_moose_vars;
+  std::set<const MooseVariableFEBase *> uo_jacobian_moose_vars;
   {
     std::vector<ShapeElementUserObject *> objs;
     theWarehouse()
@@ -1226,7 +1228,7 @@ FEProblemBase::checkUserObjectJacobianRequirement(THREAD_ID tid)
     for (const auto & uo : objs)
     {
       _calculate_jacobian_in_uo = uo->computeJacobianFlag();
-      const std::set<MooseVariableFEBase *> & mv_deps = uo->jacobianMooseVariables();
+      const auto & mv_deps = uo->jacobianMooseVariables();
       uo_jacobian_moose_vars.insert(mv_deps.begin(), mv_deps.end());
     }
   }
@@ -1240,7 +1242,7 @@ FEProblemBase::checkUserObjectJacobianRequirement(THREAD_ID tid)
     for (const auto & uo : objs)
     {
       _calculate_jacobian_in_uo = uo->computeJacobianFlag();
-      const std::set<MooseVariableFEBase *> & mv_deps = uo->jacobianMooseVariables();
+      const auto & mv_deps = uo->jacobianMooseVariables();
       uo_jacobian_moose_vars.insert(mv_deps.begin(), mv_deps.end());
     }
   }
@@ -1251,7 +1253,7 @@ FEProblemBase::checkUserObjectJacobianRequirement(THREAD_ID tid)
 }
 
 void
-FEProblemBase::setVariableAllDoFMap(const std::vector<MooseVariableFEBase *> moose_vars)
+FEProblemBase::setVariableAllDoFMap(const std::vector<const MooseVariableFEBase *> & moose_vars)
 {
   for (unsigned int i = 0; i < moose_vars.size(); ++i)
   {
@@ -5900,13 +5902,19 @@ FEProblemBase::adaptMesh()
 
   for (unsigned int i = 0; i < cycles_per_step; ++i)
   {
-    CONSOLE_TIMED_PRINT("Adaptivity step ", i + 1, " of ", cycles_per_step);
-
     // Markers were already computed once by Executioner
     if (_adaptivity.getRecomputeMarkersFlag() && i > 0)
       computeMarkers();
 
-    if (_adaptivity.adaptMesh())
+    bool mesh_changed_this_step;
+    {
+      // scope this here instead of at the top of the method to prevent race conditions to console
+      // output
+      CONSOLE_TIMED_PRINT("Adaptivity step ", i + 1, " of ", cycles_per_step);
+      mesh_changed_this_step = _adaptivity.adaptMesh();
+    }
+
+    if (mesh_changed_this_step)
     {
       mesh_changed = true;
 

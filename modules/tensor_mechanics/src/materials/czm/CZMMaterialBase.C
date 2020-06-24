@@ -28,9 +28,14 @@ CZMMaterialBase::CZMMaterialBase(const InputParameters & parameters)
     _ndisp(coupledComponents("displacements")),
     _disp(_ndisp),
     _disp_neighbor(_ndisp),
+    _disp_vars(_ndisp),
+    _disp_old(_ndisp),
+    _disp_neighbor_old(_ndisp),
     _displacement_jump_global(declareProperty<RealVectorValue>("displacement_jump_global")),
+	_displacement_jump_global_old(declareProperty<RealVectorValue>("displacement_jump_global_old")),
     _displacement_jump(declareProperty<RealVectorValue>("displacement_jump")),
-    _traction_global(declareProperty<RealVectorValue>("traction_global")),
+	_displacement_jump_old(getMaterialPropertyOld<RealVectorValue>("displacement_jump")),
+	_traction_global(declareProperty<RealVectorValue>("traction_global")),
     _traction(declareProperty<RealVectorValue>("traction")),
     _traction_derivatives_global(declareProperty<RankTwoTensor>("traction_derivatives_global")),
     _traction_derivatives(declareProperty<RankTwoTensor>("traction_derivatives"))
@@ -46,7 +51,16 @@ CZMMaterialBase::CZMMaterialBase(const InputParameters & parameters)
   {
     _disp[i] = &coupledValue("displacements", i);
     _disp_neighbor[i] = &coupledNeighborValue("displacements", i);
+    _disp_vars[i] = getVar("displacements", i);
+    _disp_old[i] = &coupledValueOld("displacements", i);
+    _disp_neighbor_old[i] = &coupledNeighborValueOld("displacements", i);
   }
+}
+
+void
+CZMMaterialBase::initQpStatefulProperties()
+{
+	_displacement_jump[_qp] = 0;
 }
 
 void
@@ -58,9 +72,15 @@ CZMMaterialBase::computeQpProperties()
 
   // computing the displacement jump
   for (unsigned int i = 0; i < _ndisp; i++)
+  {
     _displacement_jump_global[_qp](i) = (*_disp_neighbor[i])[_qp] - (*_disp[i])[_qp];
+    _displacement_jump_global_old[_qp](i) = (*_disp_neighbor_old[i])[_qp] - (*_disp_old[i])[_qp];
+  }
   for (unsigned int i = _ndisp; i < 3; i++)
+  {
     _displacement_jump_global[_qp](i) = 0;
+    _displacement_jump_global_old[_qp](i) = 0;
+  }
 
   // rotate the displacement jump to the local coordiante system
   _displacement_jump[_qp] = RotationGlobalToLocal * _displacement_jump_global[_qp];

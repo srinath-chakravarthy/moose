@@ -30,6 +30,10 @@ public:
   CZMMaterialBase(const InputParameters & parameters);
 
 protected:
+
+//  virtual void initialSetup() override;
+
+  virtual void initQpStatefulProperties() override;
   virtual void computeQpProperties() override;
 
   /// normal to the interface
@@ -42,6 +46,9 @@ protected:
   ///@{
   std::vector<const VariableValue *> _disp;
   std::vector<const VariableValue *> _disp_neighbor;
+  std::vector<MooseVariable *> _disp_vars;
+  std::vector<const VariableValue *> _disp_old;
+  std::vector<const VariableValue *> _disp_neighbor_old;
   ///@}
 
   /// method returning the traction in the interface coordinate system.
@@ -53,7 +60,9 @@ protected:
   /// the displacement jump in global and local coordiante
   ///@{
   MaterialProperty<RealVectorValue> & _displacement_jump_global;
+  MaterialProperty<RealVectorValue> & _displacement_jump_global_old;
   MaterialProperty<RealVectorValue> & _displacement_jump;
+  const MaterialProperty<RealVectorValue> & _displacement_jump_old;
   ///@}
 
   /// the value of the traction in global and local coordinates

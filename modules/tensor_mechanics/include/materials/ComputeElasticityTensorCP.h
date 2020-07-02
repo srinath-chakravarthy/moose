@@ -25,7 +25,7 @@ public:
   ComputeElasticityTensorCP(const InputParameters & parameters);
 
 protected:
-  virtual void computeQpElasticityTensor();
+  virtual void computeQpElasticityTensor() override;
 
   virtual void assignEulerAngles();
 
@@ -33,7 +33,7 @@ protected:
    * Element property read user object
    * Presently used to read Euler angles -  see test
    */
-  const ElementPropertyReadFile * _read_prop_user_object;
+  const ElementPropertyReadFile * const _read_prop_user_object;
 
   MaterialProperty<RealVectorValue> & _Euler_angles_mat_prop;
 

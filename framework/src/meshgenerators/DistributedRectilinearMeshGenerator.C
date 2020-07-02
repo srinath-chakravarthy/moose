@@ -51,6 +51,9 @@ DistributedRectilinearMeshGenerator::validParams()
   params.addParam<Real>("ymax", 1.0, "Upper Y Coordinate of the generated mesh");
   params.addParam<Real>("zmax", 1.0, "Upper Z Coordinate of the generated mesh");
 
+  params.addParam<processor_id_type>(
+      "num_cores_for_partition", 0, "Number of cores for partitioning the graph");
+
   MooseEnum elem_types(
       "EDGE EDGE2 EDGE3 EDGE4 QUAD QUAD4 QUAD8 QUAD9 TRI3 TRI6 HEX HEX8 HEX20 HEX27 TET4 TET10 "
       "PRISM6 PRISM15 PRISM18 PYRAMID5 PYRAMID13 PYRAMID14"); // no default
@@ -97,11 +100,12 @@ DistributedRectilinearMeshGenerator::DistributedRectilinearMeshGenerator(
     _ymax(declareMeshProperty("ymax", getParam<Real>("ymax"))),
     _zmin(declareMeshProperty("zmin", getParam<Real>("zmin"))),
     _zmax(declareMeshProperty("zmax", getParam<Real>("zmax"))),
+    _num_cores_for_partition(getParam<processor_id_type>("num_cores_for_partition")),
     _bias_x(getParam<Real>("bias_x")),
     _bias_y(getParam<Real>("bias_y")),
     _bias_z(getParam<Real>("bias_z")),
     _part_package(getParam<MooseEnum>("part_package")),
-    _num_parts_per_compute_node(getParam<dof_id_type>("num_cores_per_compute_node"))
+    _num_parts_per_compute_node(getParam<processor_id_type>("num_cores_per_compute_node"))
 {
 }
 
@@ -130,9 +134,19 @@ DistributedRectilinearMeshGenerator::getNeighbors<Edge2>(const dof_id_type nx,
                                                          const dof_id_type /*j*/,
                                                          const dof_id_type /*k*/,
                                                          std::vector<dof_id_type> & neighbors,
-                                                         const bool /*corner*/)
+                                                         const bool corner)
 
 {
+  if (corner)
+  {
+    // The elements on the opposite of the current boundary are required
+    // for periodic boundary conditions
+    neighbors[0] = (i - 1 + nx) % nx;
+    neighbors[1] = (i + 1 + nx) % nx;
+
+    return;
+  }
+
   neighbors[0] = i - 1;
   neighbors[1] = i + 1;
 
@@ -165,26 +179,17 @@ DistributedRectilinearMeshGenerator::getGhostNeighbors<Edge2>(const dof_id_type 
                                                               const MeshBase & mesh,
                                                               std::set<dof_id_type> & ghost_elems)
 {
-  auto & boundary_info = mesh.get_boundary_info();
-
   std::vector<dof_id_type> neighbors(2);
 
   for (auto elem_ptr : mesh.element_ptr_range())
   {
-    for (unsigned int s = 0; s < elem_ptr->n_sides(); s++)
-    {
-      // No current neighbor
-      if (!elem_ptr->neighbor_ptr(s))
-      {
-        // Not on a boundary
-        if (!boundary_info.n_boundary_ids(elem_ptr, s))
-        {
-          getNeighbors<Edge2>(nx, 0, 0, elem_ptr->id(), 0, 0, neighbors, false);
+    auto elem_id = elem_ptr->id();
 
-          ghost_elems.insert(neighbors[s]);
-        }
-      }
-    }
+    getNeighbors<Edge2>(nx, 0, 0, elem_id, 0, 0, neighbors, true);
+
+    for (auto neighbor : neighbors)
+      if (neighbor != Elem::invalid_id && !mesh.query_elem_ptr(neighbor))
+        ghost_elems.insert(neighbor);
   }
 }
 
@@ -222,7 +227,7 @@ DistributedRectilinearMeshGenerator::addElement<Edge2>(const dof_id_type nx,
     std::unique_ptr<Node> new_node =
         Node::build(Point(static_cast<Real>(node_offset) / nx, 0, 0), node_offset);
 
-    new_node->set_unique_id() = nx + node_offset;
+    new_node->set_unique_id(nx + node_offset);
     new_node->processor_id() = pid;
 
     node0_ptr = mesh.add_node(std::move(new_node));
@@ -234,7 +239,7 @@ DistributedRectilinearMeshGenerator::addElement<Edge2>(const dof_id_type nx,
     std::unique_ptr<Node> new_node =
         Node::build(Point(static_cast<Real>(node_offset + 1) / nx, 0, 0), node_offset + 1);
 
-    new_node->set_unique_id() = nx + node_offset + 1;
+    new_node->set_unique_id(nx + node_offset + 1);
     new_node->processor_id() = pid;
 
     node1_ptr = mesh.add_node(std::move(new_node));
@@ -243,7 +248,7 @@ DistributedRectilinearMeshGenerator::addElement<Edge2>(const dof_id_type nx,
   Elem * elem = new Edge2;
   elem->set_id(elem_id);
   elem->processor_id() = pid;
-  elem->set_unique_id() = elem_id;
+  elem->set_unique_id(elem_id);
   elem = mesh.add_elem(elem);
   elem->set_node(0) = node0_ptr;
   elem->set_node(1) = node1_ptr;
@@ -333,11 +338,14 @@ DistributedRectilinearMeshGenerator::getNeighbors<Quad4>(const dof_id_type nx,
   if (corner)
   {
     // libMesh dof_id_type looks like unsigned int
+    // We add one layer of point neighbors by default. Besides,
+    // The elements on the opposite side of the current boundary are included
+    // for, in case, periodic boundary conditions. The overhead is negligible
+    // since you could consider every element has the same number of neighbors
     unsigned int nnb = 0;
     for (unsigned int ii = 0; ii <= 2; ii++)
       for (unsigned int jj = 0; jj <= 2; jj++)
-        if ((i + ii >= 1) && (i + ii <= nx) && (j + jj >= 1) && (j + jj <= ny))
-          neighbors[nnb++] = elemId<Quad4>(nx, 0, i + ii - 1, j + jj - 1, 0);
+        neighbors[nnb++] = elemId<Quad4>(nx, 0, (i + ii - 1 + nx) % nx, (j + jj - 1 + ny) % ny, 0);
 
     return;
   }
@@ -433,7 +441,7 @@ DistributedRectilinearMeshGenerator::addElement<Quad4>(const dof_id_type nx,
     std::unique_ptr<Node> new_node =
         Node::build(Point(static_cast<Real>(i) / nx, static_cast<Real>(j) / ny, 0), node0_id);
 
-    new_node->set_unique_id() = nx * ny + node0_id;
+    new_node->set_unique_id(nx * ny + node0_id);
     new_node->processor_id() = pid;
 
     node0_ptr = mesh.add_node(std::move(new_node));
@@ -447,7 +455,7 @@ DistributedRectilinearMeshGenerator::addElement<Quad4>(const dof_id_type nx,
     std::unique_ptr<Node> new_node =
         Node::build(Point(static_cast<Real>(i + 1) / nx, static_cast<Real>(j) / ny, 0), node1_id);
 
-    new_node->set_unique_id() = nx * ny + node1_id;
+    new_node->set_unique_id(nx * ny + node1_id);
     new_node->processor_id() = pid;
 
     node1_ptr = mesh.add_node(std::move(new_node));
@@ -461,7 +469,7 @@ DistributedRectilinearMeshGenerator::addElement<Quad4>(const dof_id_type nx,
     std::unique_ptr<Node> new_node = Node::build(
         Point(static_cast<Real>(i + 1) / nx, static_cast<Real>(j + 1) / ny, 0), node2_id);
 
-    new_node->set_unique_id() = nx * ny + node2_id;
+    new_node->set_unique_id(nx * ny + node2_id);
     new_node->processor_id() = pid;
 
     node2_ptr = mesh.add_node(std::move(new_node));
@@ -475,7 +483,7 @@ DistributedRectilinearMeshGenerator::addElement<Quad4>(const dof_id_type nx,
     std::unique_ptr<Node> new_node =
         Node::build(Point(static_cast<Real>(i) / nx, static_cast<Real>(j + 1) / ny, 0), node3_id);
 
-    new_node->set_unique_id() = nx * ny + node3_id;
+    new_node->set_unique_id(nx * ny + node3_id);
     new_node->processor_id() = pid;
 
     node3_ptr = mesh.add_node(std::move(new_node));
@@ -484,7 +492,7 @@ DistributedRectilinearMeshGenerator::addElement<Quad4>(const dof_id_type nx,
   Elem * elem = new Quad4;
   elem->set_id(elem_id);
   elem->processor_id() = pid;
-  elem->set_unique_id() = elem_id;
+  elem->set_unique_id(elem_id);
   elem = mesh.add_elem(elem);
   elem->set_node(0) = node0_ptr;
   elem->set_node(1) = node1_ptr;
@@ -596,13 +604,17 @@ DistributedRectilinearMeshGenerator::getNeighbors<Hex8>(const dof_id_type nx,
 
   if (corner)
   {
+    // We collect one layer of point neighbors
+    // We add one layer of point neighbors by default. Besides,
+    // The elements on the opposite side of the current boundary are included
+    // for, in case, periodic boundary conditions. The overhead is negligible
+    // since you could consider every element has the same number of neighbors
     unsigned int nnb = 0;
     for (unsigned int ii = 0; ii <= 2; ii++)
       for (unsigned int jj = 0; jj <= 2; jj++)
         for (unsigned int kk = 0; kk <= 2; kk++)
-          if ((i + ii >= 1) && (i + ii <= nx) && (j + jj >= 1) && (j + jj <= ny) && (k + kk >= 1) &&
-              (k + kk <= nz))
-            neighbors[nnb++] = elemId<Hex8>(nx, ny, i + ii - 1, j + jj - 1, k + kk - 1);
+          neighbors[nnb++] = elemId<Hex8>(
+              nx, ny, (i + ii - 1 + nx) % nx, (j + jj - 1 + ny) % ny, (k + kk - 1 + nz) % nz);
 
     return;
   }
@@ -662,7 +674,7 @@ DistributedRectilinearMeshGenerator::addPoint<Hex8>(const dof_id_type nx,
     std::unique_ptr<Node> new_node = Node::build(
         Point(static_cast<Real>(i) / nx, static_cast<Real>(j) / ny, static_cast<Real>(k) / nz), id);
 
-    new_node->set_unique_id() = nx * ny * nz + id;
+    new_node->set_unique_id(nx * ny * nz + id);
 
     node_ptr = mesh.add_node(std::move(new_node));
   }
@@ -706,7 +718,7 @@ DistributedRectilinearMeshGenerator::addElement<Hex8>(const dof_id_type nx,
   Elem * elem = new Hex8;
   elem->set_id(elem_id);
   elem->processor_id() = pid;
-  elem->set_unique_id() = elem_id;
+  elem->set_unique_id(elem_id);
   elem = mesh.add_elem(elem);
   elem->set_node(0) = node0_ptr;
   elem->set_node(1) = node1_ptr;
@@ -840,6 +852,12 @@ DistributedRectilinearMeshGenerator::buildCube(UnstructuredMesh & mesh,
   // Current processor ID
   const auto pid = comm.rank();
 
+  if (_num_cores_for_partition > num_procs)
+    mooseError("Number of cores for the graph partitioner is too large ", _num_cores_for_partition);
+
+  if (!_num_cores_for_partition)
+    _num_cores_for_partition = num_procs;
+
   auto & boundary_info = mesh.get_boundary_info();
 
   std::unique_ptr<Elem> canonical_elem = libmesh_make_unique<T>();
@@ -853,8 +871,19 @@ DistributedRectilinearMeshGenerator::buildCube(UnstructuredMesh & mesh,
   dof_id_type num_local_elems;
   dof_id_type local_elems_begin;
   dof_id_type local_elems_end;
-  MooseUtils::linearPartitionItems(
-      num_elems, num_procs, pid, num_local_elems, local_elems_begin, local_elems_end);
+  if (pid < _num_cores_for_partition)
+    MooseUtils::linearPartitionItems(num_elems,
+                                     _num_cores_for_partition,
+                                     pid,
+                                     num_local_elems,
+                                     local_elems_begin,
+                                     local_elems_end);
+  else
+  {
+    num_local_elems = 0;
+    local_elems_begin = 0;
+    local_elems_end = 0;
+  }
 
   std::vector<std::vector<dof_id_type>> graph;
 
@@ -926,7 +955,7 @@ DistributedRectilinearMeshGenerator::buildCube(UnstructuredMesh & mesh,
   for (auto & ghost_id : ghost_elems)
   {
     // This is the processor ID the ghost_elem was originally assigned to
-    auto proc_id = MooseUtils::linearPartitionChunk(num_elems, num_procs, ghost_id);
+    auto proc_id = MooseUtils::linearPartitionChunk(num_elems, _num_cores_for_partition, ghost_id);
 
     // Using side-effect insertion on purpose
     ghost_elems_to_request[proc_id].push_back(ghost_id);
@@ -990,8 +1019,19 @@ DistributedRectilinearMeshGenerator::buildCube(UnstructuredMesh & mesh,
   // Already partitioned!
   mesh.skip_partitioning(true);
 
-  // No need to renumber or find neighbors - done did it.
-  mesh.prepare_for_use(true, true);
+  // No need to renumber or find neighbors this time - done did it.
+  bool old_allow_renumbering = mesh.allow_renumbering();
+  mesh.allow_renumbering(false);
+  mesh.allow_find_neighbors(false);
+  // No, I do not want to remove anything in case periodic boundary conditions
+  // are required late. We  stop libMesh from deleting the valuable remote
+  // elements paired with the local elements
+  mesh.allow_remote_element_removal(false);
+  mesh.prepare_for_use();
+
+  // But we'll want to at least find neighbors after any future mesh changes!
+  mesh.allow_find_neighbors(true);
+  mesh.allow_renumbering(old_allow_renumbering);
 
   // Scale the nodal positions
   scaleNodalPositions<T>(nx, ny, nz, xmin, xmax, ymin, ymax, zmin, zmax, mesh);
@@ -1002,6 +1042,10 @@ DistributedRectilinearMeshGenerator::generate()
 {
   // DistributedRectilinearMeshGenerator always generates a distributed mesh
   _mesh->setParallelType(MooseMesh::ParallelType::DISTRIBUTED);
+  // We will set up boundaries accordingly. We do not want to call
+  // ghostGhostedBoundaries in which allgather_packed_range  is unscalable.
+  // ghostGhostedBoundaries will gather all boundaries to every single processor
+  _mesh->needGhostGhostedBoundaries(false);
   auto mesh = _mesh->buildMeshBaseObject(MooseMesh::ParallelType::DISTRIBUTED);
 
   MooseEnum elem_type_enum = getParam<MooseEnum>("elem_type");
@@ -1156,6 +1200,14 @@ DistributedRectilinearMeshGenerator::generate()
       }
     }
   }
+
+  // MeshOutput<MT>::write_equation_systems will automatically renumber node and element IDs.
+  // So we have to make that consistent at the first place. Otherwise, the moose cached data such as
+  // _block_node_list will be inconsistent when we doing MooseMesh::getNodeBlockIds. That being
+  // said, moose will pass new ids to getNodeBlockIds while the cached _block_node_list still use
+  // the old node IDs. Yes, you could say: go ahead to do a mesh update, but I would say no. I do
+  // not change mesh and there is no point to update anything.
+  mesh->allow_renumbering(true);
 
   return dynamic_pointer_cast<MeshBase>(mesh);
 }

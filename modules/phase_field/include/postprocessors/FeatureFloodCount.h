@@ -460,7 +460,7 @@ protected:
                    unsigned int var_num = invalid_id);
 
   /**
-   * This routine is called on the master rank only and stitches together the partial
+   * This routine is called on the primary rank only and stitches together the partial
    * feature pieces seen on any processor.
    */
   virtual void mergeSets();
@@ -485,15 +485,15 @@ protected:
 
   /**
    * Calls buildLocalToGlobalIndices to build the individual local to global indicies for each rank
-   * and scatters that information to all ranks. Finally, the non-master ranks update their own data
-   * structures to reflect the global mappings.
+   * and scatters that information to all ranks. Finally, the non-primary ranks update their own
+   * data structures to reflect the global mappings.
    */
   void scatterAndUpdateRanks();
 
   /**
    * This routine populates a stacked vector of local to global indices per rank and the associated
    * count vector for scattering the vector to the ranks. The individual vectors can be different
-   * sizes. The ith vector will be distributed to the ith processor including the master rank.
+   * sizes. The ith vector will be distributed to the ith processor including the primary rank.
    * e.g.
    * [ ... n_0 ] [ ... n_1 ] ... [ ... n_m ]
    *
@@ -638,7 +638,7 @@ protected:
   std::vector<std::map<dof_id_type, int>> _var_index_maps;
 
   /// The data structure used to find neighboring elements give a node ID
-  std::vector<std::vector<const Elem *>> _nodes_to_elem_map;
+  std::unordered_map<dof_id_type, std::vector<const Elem *>> _nodes_to_elem_map;
 
   /// The number of features seen by this object per map
   std::vector<unsigned int> _feature_counts_per_map;
@@ -727,8 +727,8 @@ protected:
   /// Boundary element range pointer
   ConstBndElemRange * _bnd_elem_range;
 
-  /// Convenience variable for testing master rank
-  const bool _is_master;
+  /// Convenience variable for testing primary rank
+  const bool _is_primary;
 
 private:
   template <class T>

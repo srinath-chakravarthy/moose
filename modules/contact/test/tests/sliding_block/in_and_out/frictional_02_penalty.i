@@ -136,6 +136,7 @@
     block = '1 2'
     youngs_modulus = 1e6
     poissons_ratio = 0.3
+    constant_on = SUBDOMAIN
   [../]
   [./left_stress]
     type = ComputeFiniteStrainElasticStress
@@ -183,8 +184,8 @@
 
 [Contact]
   [./leftright]
-    slave = 3
-    master = 2
+    secondary = 3
+    primary = 2
     model = coulomb
     penalty = 1e+7
     friction_coefficient = 0.2

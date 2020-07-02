@@ -139,6 +139,7 @@ class TestHarness:
             checks['curl'] = set(['ALL'])
             checks['threading'] = set(['ALL'])
             checks['superlu'] = set(['ALL'])
+            checks['mumps'] = set(['ALL'])
             checks['parmetis'] = set(['ALL'])
             checks['chaco'] = set(['ALL'])
             checks['party'] = set(['ALL'])
@@ -167,6 +168,7 @@ class TestHarness:
             checks['curl'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'curl')
             checks['threading'] =  util.getLibMeshThreadingModel(self.libmesh_dir)
             checks['superlu'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'superlu')
+            checks['mumps'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'mumps')
             checks['parmetis'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'parmetis')
             checks['chaco'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'chaco')
             checks['party'] =  util.getLibMeshConfigOption(self.libmesh_dir, 'party')
@@ -377,7 +379,8 @@ class TestHarness:
             if type(params['prereq']) != list:
                 print(("Option 'prereq' needs to be of type list in " + params['test_name']))
                 sys.exit(1)
-            params['prereq'] = [relative_path.replace('/tests/', '') + '.' + item for item in params['prereq']]
+            elif (params['prereq'] != ['ALL']):
+                params['prereq'] = [relative_path.replace('/tests/', '') + '.' + item for item in params['prereq']]
 
         # Double the alloted time for tests when running with the valgrind option
         tester.setValgrindMode(self.options.valgrind_mode)

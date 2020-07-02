@@ -290,7 +290,17 @@ public:
   virtual void createQRules(QuadratureType type,
                             Order order,
                             Order volume_order = INVALID_ORDER,
-                            Order face_order = INVALID_ORDER);
+                            Order face_order = INVALID_ORDER,
+                            SubdomainID block = Moose::ANY_BLOCK_ID);
+
+  /**
+   * Increases the elemennt/volume quadrature order for the specified mesh
+   * block if and only if the current volume quadrature order is lower.  This
+   * can only cause the quadrature level to increase.  If volume_order is
+   * lower than or equal to the current volume/elem quadrature rule order,
+   * then nothing is done (i.e. this function is idempotent).
+   */
+  void bumpVolumeQRuleOrder(Order order, SubdomainID block);
 
   /**
    * @return The maximum number of quadrature points in use on any element in this problem.
@@ -370,6 +380,10 @@ public:
                               bool suppress_displaced_init = false) override;
   virtual void
   reinitElemFace(const Elem * elem, unsigned int side, BoundaryID bnd_id, THREAD_ID tid) override;
+  virtual void reinitLowerDElem(const Elem * lower_d_elem,
+                                THREAD_ID tid,
+                                const std::vector<Point> * const pts = nullptr,
+                                const std::vector<Real> * const weights = nullptr) override;
   virtual void reinitNode(const Node * node, THREAD_ID tid) override;
   virtual void reinitNodeFace(const Node * node, BoundaryID bnd_id, THREAD_ID tid) override;
   virtual void reinitNodes(const std::vector<dof_id_type> & nodes, THREAD_ID tid) override;
@@ -523,7 +537,7 @@ public:
 
   // Function /////
   virtual void
-  addFunction(std::string type, const std::string & name, InputParameters & parameters);
+  addFunction(const std::string & type, const std::string & name, InputParameters & parameters);
   virtual bool hasFunction(const std::string & name, THREAD_ID tid = 0);
   virtual Function & getFunction(const std::string & name, THREAD_ID tid = 0);
 
@@ -549,13 +563,14 @@ public:
    * The following functions will enable MOOSE to have the capability to import distributions
    */
   virtual void
-  addDistribution(std::string type, const std::string & name, InputParameters & parameters);
+  addDistribution(const std::string & type, const std::string & name, InputParameters & parameters);
   virtual Distribution & getDistribution(const std::string & name);
 
   /**
    * The following functions will enable MOOSE to have the capability to import Samplers
    */
-  virtual void addSampler(std::string type, const std::string & name, InputParameters & parameters);
+  virtual void
+  addSampler(const std::string & type, const std::string & name, InputParameters & parameters);
   virtual Sampler & getSampler(const std::string & name, THREAD_ID tid = 0);
 
   // NL /////
@@ -767,11 +782,12 @@ public:
   virtual void swapBackMaterialsNeighborGhost(THREAD_ID tid);
 
   // Postprocessors /////
-  virtual void
-  addPostprocessor(std::string pp_name, const std::string & name, InputParameters & parameters);
+  virtual void addPostprocessor(const std::string & pp_name,
+                                const std::string & name,
+                                InputParameters & parameters);
 
   // VectorPostprocessors /////
-  virtual void addVectorPostprocessor(std::string pp_name,
+  virtual void addVectorPostprocessor(const std::string & pp_name,
                                       const std::string & name,
                                       InputParameters & parameters);
 
@@ -785,7 +801,7 @@ public:
   void initVectorPostprocessorData(const std::string & name);
 
   // UserObjects /////
-  virtual void addUserObject(std::string user_object_name,
+  virtual void addUserObject(const std::string & user_object_name,
                              const std::string & name,
                              InputParameters & parameters);
 
@@ -984,8 +1000,9 @@ public:
   getVectorPostprocessorVectors(const std::string & vpp_name);
 
   // Dampers /////
-  virtual void
-  addDamper(std::string damper_name, const std::string & name, InputParameters & parameters);
+  virtual void addDamper(const std::string & damper_name,
+                         const std::string & name,
+                         InputParameters & parameters);
   void setupDampers();
 
   /**
@@ -994,12 +1011,14 @@ public:
   bool hasDampers() { return _has_dampers; }
 
   // Indicators /////
-  void
-  addIndicator(std::string indicator_name, const std::string & name, InputParameters & parameters);
+  virtual void addIndicator(const std::string & indicator_name,
+                            const std::string & name,
+                            InputParameters & parameters);
 
   // Markers //////
-  virtual void
-  addMarker(std::string marker_name, const std::string & name, InputParameters & parameters);
+  virtual void addMarker(const std::string & marker_name,
+                         const std::string & name,
+                         InputParameters & parameters);
 
   /**
    * Add a MultiApp to the problem.
@@ -1319,21 +1338,25 @@ public:
 
   // Displaced problem /////
   virtual void addDisplacedProblem(std::shared_ptr<DisplacedProblem> displaced_problem);
+  virtual std::shared_ptr<const DisplacedProblem> getDisplacedProblem() const
+  {
+    return _displaced_problem;
+  }
   virtual std::shared_ptr<DisplacedProblem> getDisplacedProblem() { return _displaced_problem; }
 
   virtual void updateGeomSearch(
       GeometricSearchData::GeometricSearchType type = GeometricSearchData::ALL) override;
   virtual void updateMortarMesh();
 
-  void
-  createMortarInterface(const std::pair<BoundaryID, BoundaryID> & master_slave_boundary_pair,
-                        const std::pair<SubdomainID, SubdomainID> & master_slave_subdomain_pair,
-                        bool on_displaced,
-                        bool periodic);
+  void createMortarInterface(
+      const std::pair<BoundaryID, BoundaryID> & primary_secondary_boundary_pair,
+      const std::pair<SubdomainID, SubdomainID> & primary_secondary_subdomain_pair,
+      bool on_displaced,
+      bool periodic);
 
   const AutomaticMortarGeneration &
-  getMortarInterface(const std::pair<BoundaryID, BoundaryID> & master_slave_boundary_pair,
-                     const std::pair<SubdomainID, SubdomainID> & master_slave_subdomain_pair,
+  getMortarInterface(const std::pair<BoundaryID, BoundaryID> & primary_secondary_boundary_pair,
+                     const std::pair<SubdomainID, SubdomainID> & primary_secondary_subdomain_pair,
                      bool on_displaced) const;
 
   const std::unordered_map<std::pair<BoundaryID, BoundaryID>, AutomaticMortarGeneration> &
@@ -2117,6 +2140,8 @@ protected:
   bool _using_ad_mat_props;
 
 private:
+  void updateMaxQps();
+
   void joinAndFinalize(TheWarehouse::Query query, bool isgen = false);
 
   bool _error_on_jacobian_nonzero_reallocation;

@@ -11,8 +11,11 @@
 
 // MOOSE includes
 #include "NodeFaceConstraint.h"
+#include "FEProblem.h"
+#include "DisplacedProblem.h"
 
 // Forward Declarations
+class FEProblem;
 
 class NormalNodalLMMechanicalContact : public NodeFaceConstraint
 {
@@ -22,7 +25,7 @@ public:
   NormalNodalLMMechanicalContact(const InputParameters & parameters);
 
 protected:
-  virtual Real computeQpSlaveValue() override;
+  virtual Real computeQpSecondaryValue() override;
 
   virtual void computeResidual() override;
   virtual void computeJacobian() override;
@@ -38,4 +41,8 @@ protected:
   const Real _epsilon;
 
   const MooseEnum _ncp_type;
+
+  const FEProblemBase & _fe_problem;
+
+  const DisplacedProblem * const _displaced_problem;
 };

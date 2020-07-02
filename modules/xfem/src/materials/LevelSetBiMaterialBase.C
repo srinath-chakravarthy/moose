@@ -12,8 +12,11 @@
 #include "MooseVariable.h"
 #include "XFEM.h"
 
+#include "metaphysicl/raw_type.h"
+
+template <bool is_ad>
 InputParameters
-LevelSetBiMaterialBase::validParams()
+LevelSetBiMaterialBaseTempl<is_ad>::validParams()
 {
   InputParameters params = Material::validParams();
   params.addClassDescription("Compute a material property for bi-materials (consisting of two "
@@ -30,7 +33,8 @@ LevelSetBiMaterialBase::validParams()
   return params;
 }
 
-LevelSetBiMaterialBase::LevelSetBiMaterialBase(const InputParameters & parameters)
+template <bool is_ad>
+LevelSetBiMaterialBaseTempl<is_ad>::LevelSetBiMaterialBaseTempl(const InputParameters & parameters)
   : Material(parameters),
     _base_name(isParamValid("base_name") ? getParam<std::string>("base_name") + "_" : ""),
     _prop_name(getParam<std::string>("prop_name")),
@@ -41,7 +45,7 @@ LevelSetBiMaterialBase::LevelSetBiMaterialBase(const InputParameters & parameter
                                            Moose::VarFieldType::VAR_FIELD_STANDARD)
                               .number()),
     _system(_subproblem.getSystem(getParam<VariableName>("level_set_var"))),
-    _solution(_system.current_local_solution.get()),
+    _solution(*_system.current_local_solution.get()),
     _use_positive_property(false)
 {
   FEProblemBase * fe_problem = dynamic_cast<FEProblemBase *>(&_subproblem);
@@ -52,13 +56,14 @@ LevelSetBiMaterialBase::LevelSetBiMaterialBase(const InputParameters & parameter
   _xfem = MooseSharedNamespace::dynamic_pointer_cast<XFEM>(fe_problem->getXFEM());
 }
 
+template <bool is_ad>
 void
-LevelSetBiMaterialBase::computeProperties()
+LevelSetBiMaterialBaseTempl<is_ad>::computeProperties()
 {
   const Node * node = _current_elem->node_ptr(0);
 
   dof_id_type ls_dof_id = node->dof_number(_system.number(), _level_set_var_number, 0);
-  Number ls_node_value = (*_solution)(ls_dof_id);
+  Number ls_node_value = _solution(ls_dof_id);
 
   _use_positive_property = false;
 
@@ -76,11 +81,15 @@ LevelSetBiMaterialBase::computeProperties()
   Material::computeProperties();
 }
 
+template <bool is_ad>
 void
-LevelSetBiMaterialBase::computeQpProperties()
+LevelSetBiMaterialBaseTempl<is_ad>::computeQpProperties()
 {
   if (_use_positive_property)
     assignQpPropertiesForLevelSetPositive();
   else
     assignQpPropertiesForLevelSetNegative();
 }
+
+template class LevelSetBiMaterialBaseTempl<false>;
+template class LevelSetBiMaterialBaseTempl<true>;

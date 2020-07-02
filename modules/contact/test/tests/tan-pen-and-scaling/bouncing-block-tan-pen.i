@@ -38,6 +38,7 @@ offset = 1e-2
     type = ADComputeIsotropicElasticityTensor
     youngs_modulus = 1e3
     poissons_ratio = 0.3
+    constant_on = SUBDOMAIN
   []
   [stress]
     type = ADComputeLinearElasticStress
@@ -46,8 +47,8 @@ offset = 1e-2
 
 [Contact]
   [leftright]
-    slave = 10
-    master = 20
+    secondary = 10
+    primary = 20
     model = coulomb
     formulation = tangential_penalty
     penalty = 1e3

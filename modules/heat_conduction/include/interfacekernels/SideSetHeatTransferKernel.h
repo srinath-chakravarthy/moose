@@ -28,9 +28,9 @@ protected:
   /// Conductivity of gap divided by effective gap width
   const MaterialProperty<Real> & _cond;
   /// Bulk temperature of gap
-  const VariableValue * _Tbulk_var;
-  const MaterialProperty<Real> * _Tbulk_mat;
-  /// Convective heat transfer coefficient (master face)
+  const VariableValue * const _Tbulk_var;
+  const MaterialProperty<Real> * const _Tbulk_mat;
+  /// Convective heat transfer coefficient (primary face)
   const MaterialProperty<Real> & _hp;
   /// Convective heat transfer coefficient (neighbor face)
   const MaterialProperty<Real> & _hm;

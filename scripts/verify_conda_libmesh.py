@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # * This file is part of the MOOSE framework
 # * https://www.mooseframework.org
 # *
@@ -107,4 +107,10 @@ def main():
 
 
 if __name__ == '__main__':
-    print(main())
+    # This script should act as an informational note only, allowing the user to
+    # continue as frequently as possible (early versions of Conda do not work)
+    try:
+        print(main())
+    except:
+        print(0)
+        sys.exit(0)

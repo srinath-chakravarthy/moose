@@ -57,6 +57,10 @@ ContactAction::validParams()
       "Please use the 'secondary' parameter instead.");
 
   params.addParam<MeshGeneratorName>("mesh", "", "The mesh generator for mortar method");
+  params.addParam<VariableName>("secondary_gap_offset",
+                                "Offset to gap distance from secondary side");
+  params.addParam<VariableName>("mapped_primary_gap_offset",
+                                "Offset to gap distance mapped from primary side");
 
   params.addParam<VariableName>("disp_x", "The x displacement");
   params.addParam<VariableName>("disp_y", "The y displacement");
@@ -166,34 +170,42 @@ ContactAction::ContactAction(const InputParameters & params)
     if (getParam<bool>("ping_pong_protection"))
       paramError("ping_pong_protection",
                  "The 'ping_pong_protection' option can only be used with the 'ranfs' formulation");
+
+  if (_formulation == "ranfs")
+  {
+    if (isParamValid("secondary_gap_offset"))
+      paramError("secondary_gap_offset",
+                 "The 'secondary_gap_offset' option can only be used with the "
+                 "'MechanicalContactConstraint'");
+    if (isParamValid("mapped_primary_gap_offset"))
+      paramError("mapped_primary_gap_offset",
+                 "The 'mapped_primary_gap_offset' option can only be used with the "
+                 "'MechanicalContactConstraint'");
+  }
 }
 
 void
 ContactAction::act()
 {
   if (_formulation == "mortar")
+    // This method executes multiple tasks
     addMortarContact();
-  else
+
+  if (_current_task == "add_dirac_kernel")
   {
-    if (_current_task == "add_dirac_kernel")
-    {
-      // It is risky to apply this optimization to contact problems
-      // since the problem configuration may be changed during Jacobian
-      // evaluation. We therefore turn it off for all contact problems so that
-      // PETSc-3.8.4 or higher will have the same behavior as PETSc-3.8.3.
-      if (!_problem->isSNESMFReuseBaseSetbyUser())
-        _problem->setSNESMFReuseBase(false, false);
+    // It is risky to apply this optimization to contact problems
+    // since the problem configuration may be changed during Jacobian
+    // evaluation. We therefore turn it off for all contact problems so that
+    // PETSc-3.8.4 or higher will have the same behavior as PETSc-3.8.3.
+    if (!_problem->isSNESMFReuseBaseSetbyUser())
+      _problem->setSNESMFReuseBase(false, false);
 
-      if (!_problem->getDisplacedProblem())
-        mooseError(
-            "Contact requires updated coordinates.  Use the 'displacements = ...' line in the "
-            "Mesh block.");
+    if (!_problem->getDisplacedProblem())
+      mooseError("Contact requires updated coordinates.  Use the 'displacements = ...' line in the "
+                 "Mesh block.");
 
-      if (_system == "Constraint")
-        // MechanicalContactConstraint has to be added after the init_problem task, so it cannot
-        // be added for the add_constraint task.
-        addNodeFaceContact();
-    }
+    if (_formulation != "mortar")
+      addNodeFaceContact();
   }
 
   if (_current_task == "add_aux_kernel")
@@ -206,11 +218,17 @@ ContactAction::act()
 
     {
       InputParameters params = _factory.getValidParams("PenetrationAux");
-      params.applyParameters(parameters());
+      params.applyParameters(parameters(), {"secondary_gap_offset", "mapped_primary_gap_offset"});
       params.set<ExecFlagEnum>("execute_on") = {EXEC_INITIAL, EXEC_LINEAR};
       params.set<std::vector<BoundaryName>>("boundary") = {_secondary};
       params.set<BoundaryName>("paired_boundary") = _primary;
       params.set<AuxVariableName>("variable") = "penetration";
+      if (isParamValid("secondary_gap_offset"))
+        params.set<std::vector<VariableName>>("secondary_gap_offset") = {
+            getParam<VariableName>("secondary_gap_offset")};
+      if (isParamValid("mapped_primary_gap_offset"))
+        params.set<std::vector<VariableName>>("mapped_primary_gap_offset") = {
+            getParam<VariableName>("mapped_primary_gap_offset")};
 
       params.set<bool>("use_displaced_mesh") = true;
       std::string name = _name + "_contact_" + Moose::stringify(contact_auxkernel_counter);
@@ -488,7 +506,8 @@ ContactAction::addNodeFaceContact()
 
   InputParameters params = _factory.getValidParams(constraint_type);
 
-  params.applyParameters(parameters(), {"displacements"});
+  params.applyParameters(parameters(),
+                         {"displacements", "secondary_gap_offset", "mapped_primary_gap_offset"});
   params.set<std::vector<VariableName>>("displacements") = displacements;
   params.set<bool>("use_displaced_mesh") = true;
 
@@ -496,6 +515,12 @@ ContactAction::addNodeFaceContact()
   {
     params.set<std::vector<VariableName>>("nodal_area") = {"nodal_area_" + name()};
     params.set<BoundaryName>("boundary") = _primary;
+    if (isParamValid("secondary_gap_offset"))
+      params.set<std::vector<VariableName>>("secondary_gap_offset") = {
+          getParam<VariableName>("secondary_gap_offset")};
+    if (isParamValid("mapped_primary_gap_offset"))
+      params.set<std::vector<VariableName>>("mapped_primary_gap_offset") = {
+          getParam<VariableName>("mapped_primary_gap_offset")};
   }
 
   for (unsigned int i = 0; i < ndisp; ++i)

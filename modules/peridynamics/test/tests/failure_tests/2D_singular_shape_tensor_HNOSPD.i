@@ -49,7 +49,6 @@
 [UserObjects]
   [./singular_shape_tensor]
     type = SingularShapeTensorEliminatorUserObjectPD
-    formulation = BOND_HORIZON
   [../]
 []
 

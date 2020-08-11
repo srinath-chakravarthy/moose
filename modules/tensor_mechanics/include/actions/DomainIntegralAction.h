@@ -35,6 +35,8 @@ protected:
   enum INTEGRAL
   {
     J_INTEGRAL,
+    C_INTEGRAL,
+    K_FROM_J_INTEGRAL,
     INTERACTION_INTEGRAL_KI,
     INTERACTION_INTEGRAL_KII,
     INTERACTION_INTEGRAL_KIII,
@@ -121,8 +123,6 @@ protected:
   std::vector<VariableName> _displacements;
   /// Temperature variable
   VariableName _temp;
-  /// Whether to convert the J-integral to a stress intensity factor (K)
-  bool _convert_J_to_K;
   /// Whether the model has a symmetry plane passing through the plane of the crack
   bool _has_symmetry_plane;
   /// Identifier for which plane is the symmetry plane
@@ -139,8 +139,8 @@ protected:
   bool _output_q;
   /// Vector of ids for the individual rings on which the fracture integral is computed
   std::vector<unsigned int> _ring_vec;
-  /// Whether the deprecated solid_mechanics system is used for mechanics calculations
-  bool _solid_mechanics;
   /// Whether the constitutive models for the mechanics calculations use an incremental form
   bool _incremental;
+  /// Whether to convert the J-integral to a stress intensity factor (K) --deprecated
+  bool _convert_J_to_K;
 };
